@@ -1,6 +1,6 @@
 import React from 'react';
 import { NotificationLog } from '../types';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 
 interface HistoryViewProps {
   logs: NotificationLog[];
@@ -25,7 +25,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ logs }) => {
                 <th className="px-6 py-4 text-right">الطالب</th>
                 <th className="px-6 py-4 text-right">النوع</th>
                 <th className="px-6 py-4 text-right">التوقيت</th>
-                <th className="px-6 py-4 text-right">نص الرسالة</th>
+                <th className="px-6 py-4 text-right">التفاصيل / الخطأ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -63,8 +63,17 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ logs }) => {
                        </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600" dir="ltr">{log.timestamp}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title={log.message}>
-                      {log.message}
+                    <td className="px-6 py-4 text-sm">
+                        {log.status === 'Failed' ? (
+                            <div className="flex items-center text-red-600 gap-1" title={log.message}>
+                                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                <span className="truncate max-w-xs">{log.message}</span>
+                            </div>
+                        ) : (
+                            <span className="text-gray-500 truncate max-w-xs block" title={log.message}>
+                                {log.message}
+                            </span>
+                        )}
                     </td>
                   </tr>
                 ))
