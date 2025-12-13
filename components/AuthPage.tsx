@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
 import { auth } from '../services/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { Lock, Mail, Loader2, AlertCircle, User } from 'lucide-react';
+import { Lock, Mail, Loader2, AlertCircle, User, Smartphone } from 'lucide-react';
+import { ParentPortal } from './ParentPortal';
 
 export const AuthPage: React.FC = () => {
+  const [mode, setMode] = useState<'LOGIN' | 'PARENT'>('LOGIN');
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  if (mode === 'PARENT') {
+    return <ParentPortal onBack={() => setMode('LOGIN')} />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +27,6 @@ export const AuthPage: React.FC = () => {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        // Save the full name to the user's profile
         if (fullName.trim()) {
           await updateProfile(userCredential.user, {
             displayName: fullName.trim()
@@ -34,28 +39,16 @@ export const AuthPage: React.FC = () => {
       const errorCode = err.code;
       
       if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/wrong-password' || errorCode === 'auth/user-not-found') {
-        msg = "بيانات الدخول غير صحيحة. يرجى التأكد من البريد وكلمة المرور، أو قم بإنشاء حساب جديد.";
+        msg = "بيانات الدخول غير صحيحة.";
       } else if (errorCode === 'auth/email-already-in-use') {
-        msg = "البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.";
+        msg = "البريد الإلكتروني مسجل بالفعل.";
       } else if (errorCode === 'auth/weak-password') {
-        msg = "كلمة المرور يجب أن تكون 6 أحرف على الأقل.";
-      } else if (errorCode === 'auth/invalid-email') {
-        msg = "عنوان البريد الإلكتروني غير صالح.";
-      } else if (errorCode === 'auth/network-request-failed') {
-        msg = "خطأ في الاتصال. يرجى التحقق من الإنترنت.";
+        msg = "كلمة المرور ضعيفة.";
       }
-      
       setError(msg);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const toggleMode = () => {
-    setIsLogin(!isLogin);
-    setError('');
-    setFullName('');
-    // Keep email/password if switching to facilitate corrections
   };
 
   return (
@@ -68,7 +61,7 @@ export const AuthPage: React.FC = () => {
 
         <div className="p-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-6 text-center">
-            {isLogin ? 'مرحبًا بعودتك' : 'إنشاء حساب جديد'}
+            {isLogin ? 'دخول الإدارة' : 'إنشاء حساب إدارة'}
           </h2>
 
           {error && (
@@ -79,20 +72,18 @@ export const AuthPage: React.FC = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            
-            {!isLogin && (
+             {/* Admin Form Fields */}
+             {!isLogin && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل</label>
                 <div className="relative">
-                  {/* Changed absolute left-3 to right-3 for RTL */}
                   <User className="w-5 h-5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
-                  {/* Changed pl-10 to pr-10 for RTL */}
                   <input
                     type="text"
                     required={!isLogin}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="الاسم الكامل"
                   />
                 </div>
@@ -108,7 +99,7 @@ export const AuthPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   placeholder="name@school.edu"
                   dir="ltr" 
                   style={{ textAlign: 'right' }} 
@@ -125,7 +116,7 @@ export const AuthPage: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                   placeholder="••••••••"
                   dir="ltr"
                   style={{ textAlign: 'right' }}
@@ -138,21 +129,25 @@ export const AuthPage: React.FC = () => {
               disabled={isLoading}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center"
             >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                isLogin ? 'تسجيل الدخول' : 'إنشاء حساب'
-              )}
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLogin ? 'تسجيل الدخول' : 'إنشاء حساب')}
             </button>
           </form>
 
+          <div className="my-6 border-t border-gray-100 relative">
+            <span className="absolute left-1/2 -translate-x-1/2 -top-3 bg-white px-2 text-sm text-gray-400">أو</span>
+          </div>
+
+          <button
+            onClick={() => setMode('PARENT')}
+            className="w-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            <Smartphone className="w-5 h-5" />
+            الدخول كولي أمر (تطبيق الهاتف)
+          </button>
+
           <div className="mt-6 text-center text-sm text-gray-600">
-            {isLogin ? "ليس لديك حساب؟ " : "لديك حساب بالفعل؟ "}
-            <button
-              onClick={toggleMode}
-              className="text-blue-600 font-semibold hover:underline"
-            >
-              {isLogin ? 'سجل الآن' : 'سجل دخولك'}
+            <button onClick={() => setIsLogin(!isLogin)} className="text-blue-600 font-semibold hover:underline">
+              {isLogin ? 'إنشاء حساب إدارة جديد' : 'لديك حساب إدارة؟'}
             </button>
           </div>
         </div>
