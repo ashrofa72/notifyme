@@ -58,8 +58,15 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     }
   };
 
-  try {
-    const response = await fetch('https://fcm.googleapis.com/fcm/send', {
+  const FCM_ENDPOINT = 'https://fcm.googleapis.com/fcm/send';
+
+  const performFetch = async (useProxy: boolean) => {
+    // Using corsproxy.io to bypass browser CORS restrictions for the Legacy HTTP API
+    const url = useProxy 
+      ? `https://corsproxy.io/?${encodeURIComponent(FCM_ENDPOINT)}` 
+      : FCM_ENDPOINT;
+      
+    return fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -67,10 +74,23 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
       },
       body: JSON.stringify(payload)
     });
+  };
 
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`HTTP ${response.status}: ${text}`);
+  try {
+    let response;
+    
+    try {
+        // Attempt 1: Direct Fetch
+        response = await performFetch(false);
+    } catch (networkError) {
+        // Attempt 2: Fallback to Proxy if CORS/Network error occurs
+        console.warn("Direct FCM fetch failed (likely CORS). Retrying with proxy...", networkError);
+        response = await performFetch(true);
+    }
+
+    if (!response || !response.ok) {
+        const text = response ? await response.text() : "Network Error";
+        throw new Error(`HTTP ${response?.status || 'Failed'}: ${text}`);
     }
 
     const data = await response.json();
@@ -98,8 +118,8 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     let userMessage = error.message;
 
     // Provide friendly error messages for common issues
-    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-        userMessage = "خطأ شبكة/CORS: المتصفح منع الاتصال بـ Firebase. راجع الإعدادات.";
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        userMessage = "خطأ شبكة/CORS: تعذر الاتصال بـ Firebase حتى عبر البروكسي. تأكد من الإنترنت.";
     } else if (userMessage.includes('InvalidRegistration')) {
         userMessage = "الرمز (Token) غير صالح أو منتهي الصلاحية.";
     } else if (userMessage.includes('Unauthorized') || userMessage.includes('401')) {
