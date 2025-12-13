@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, getDocs, doc, writeBatch, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { Student } from '../types';
 import { MOCK_STUDENTS } from './mockData';
 
@@ -22,6 +22,18 @@ export const getStudents = async (): Promise<Student[]> => {
     console.warn("Firestore access failed. Falling back to MOCK data.", error);
     return MOCK_STUDENTS;
   }
+};
+
+// NEW: Real-time subscription to ensure Admin UI updates immediately when a parent links a device
+export const subscribeToStudents = (onData: (students: Student[]) => void): (() => void) => {
+  const studentsCol = collection(db, STUDENTS_COLLECTION);
+  const unsubscribe = onSnapshot(studentsCol, (snapshot) => {
+    const students = snapshot.docs.map(doc => doc.data() as Student);
+    onData(students);
+  }, (error) => {
+    console.error("Error watching students:", error);
+  });
+  return unsubscribe;
 };
 
 export const seedDatabase = async (): Promise<void> => {

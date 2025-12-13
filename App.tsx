@@ -7,7 +7,7 @@ import { SettingsView } from './components/SettingsView';
 import { AuthPage } from './components/AuthPage';
 import { ViewState, Student, NotificationLog, AttendanceStatus } from './types';
 import { MOCK_CLASSES, INITIAL_LOGS } from './services/mockData';
-import { getStudents, fetchStudentsFromGoogleSheet } from './services/dataService';
+import { getStudents, fetchStudentsFromGoogleSheet, subscribeToStudents } from './services/dataService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { Loader2, ShieldAlert } from 'lucide-react';
@@ -36,22 +36,19 @@ const App: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  // Load Data only when user is logged in
+  // Load Data only when user is logged in - NOW REALTIME
   useEffect(() => {
     if (!user) return;
 
-    const fetchData = async () => {
-      setIsDataLoading(true);
-      const data = await getStudents();
-      if (data.length > 0) {
-        setStudents(data);
-      } else {
-        setStudents([]); 
-      }
+    setIsDataLoading(true);
+    // Subscribe to Firestore updates. This ensures that when a parent registers, 
+    // the 'fcmToken' appears in the admin dashboard immediately.
+    const unsubscribe = subscribeToStudents((data) => {
+      setStudents(data);
       setIsDataLoading(false);
-    };
+    });
 
-    fetchData();
+    return () => unsubscribe();
   }, [user]); 
 
   // Handlers
