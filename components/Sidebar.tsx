@@ -46,7 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userE
             <BellRing className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-gray-800">NotifyEd</h1>
+          <h1 className="text-xl font-bold text-gray-800">AlzahraaConnection</h1>
           <p className="text-xs text-gray-500">تنبيهات أولياء الأمور</p>
         </div>
       </div>

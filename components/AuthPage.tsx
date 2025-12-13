@@ -31,10 +31,20 @@ export const AuthPage: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       let msg = "حدث خطأ ما.";
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') msg = "البريد الإلكتروني أو كلمة المرور غير صحيحة.";
-      if (err.code === 'auth/email-already-in-use') msg = "البريد الإلكتروني مسجل بالفعل.";
-      if (err.code === 'auth/weak-password') msg = "كلمة المرور يجب أن تكون 6 أحرف على الأقل.";
-      if (err.code === 'auth/invalid-email') msg = "عنوان البريد الإلكتروني غير صالح.";
+      const errorCode = err.code;
+      
+      if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/wrong-password' || errorCode === 'auth/user-not-found') {
+        msg = "بيانات الدخول غير صحيحة. يرجى التأكد من البريد وكلمة المرور، أو قم بإنشاء حساب جديد.";
+      } else if (errorCode === 'auth/email-already-in-use') {
+        msg = "البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول.";
+      } else if (errorCode === 'auth/weak-password') {
+        msg = "كلمة المرور يجب أن تكون 6 أحرف على الأقل.";
+      } else if (errorCode === 'auth/invalid-email') {
+        msg = "عنوان البريد الإلكتروني غير صالح.";
+      } else if (errorCode === 'auth/network-request-failed') {
+        msg = "خطأ في الاتصال. يرجى التحقق من الإنترنت.";
+      }
+      
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -45,15 +55,14 @@ export const AuthPage: React.FC = () => {
     setIsLogin(!isLogin);
     setError('');
     setFullName('');
-    setEmail('');
-    setPassword('');
+    // Keep email/password if switching to facilitate corrections
   };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
         <div className="bg-blue-600 p-8 text-center">
-          <h1 className="text-3xl font-bold text-white mb-2">NotifyEd</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">AlzahraaConnection</h1>
           <p className="text-blue-100">نظام الحضور والإشعارات المدرسي</p>
         </div>
 
@@ -63,9 +72,9 @@ export const AuthPage: React.FC = () => {
           </h2>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {error}
+            <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-start gap-2 rtl:text-right">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -100,7 +109,7 @@ export const AuthPage: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  placeholder="admin@school.edu"
+                  placeholder="name@school.edu"
                   dir="ltr" 
                   style={{ textAlign: 'right' }} 
                 />
