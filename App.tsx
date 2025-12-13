@@ -10,7 +10,10 @@ import { MOCK_CLASSES, INITIAL_LOGS } from './services/mockData';
 import { getStudents, fetchStudentsFromGoogleSheet } from './services/dataService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ShieldAlert } from 'lucide-react';
+
+// Define allowed admins (Added both .om and .com to handle potential typos)
+const ADMIN_EMAILS = ['as.ka1@hotmail.om', 'as.ka1@hotmail.com'];
 
 const App: React.FC = () => {
   // Auth State
@@ -142,6 +145,33 @@ const App: React.FC = () => {
 
   if (!user) {
     return <AuthPage />;
+  }
+
+  // ADMIN CHECK: Ensure only allowed emails can access the dashboard
+  const isAuthorized = user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+
+  if (!isAuthorized) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4" dir="rtl">
+            <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-gray-100">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <ShieldAlert className="w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">غير مصرح بالدخول</h2>
+                <p className="text-gray-600 mb-6 leading-relaxed">
+                    عذراً، هذا النظام مخصص للمسؤولين فقط.
+                    <br />
+                    الحساب <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded mx-1" dir="ltr">{user.email}</span> لا يملك صلاحيات الوصول.
+                </p>
+                <button 
+                    onClick={handleLogout}
+                    className="w-full bg-gray-900 text-white py-2.5 rounded-lg font-medium hover:bg-gray-800 transition shadow-lg shadow-gray-200"
+                >
+                    تسجيل الخروج
+                </button>
+            </div>
+        </div>
+    );
   }
 
   return (

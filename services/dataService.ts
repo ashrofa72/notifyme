@@ -1,14 +1,17 @@
 import { db } from './firebase';
-import { collection, getDocs, doc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch, getDoc, setDoc } from 'firebase/firestore';
 import { Student } from '../types';
 import { MOCK_STUDENTS } from './mockData';
 
 const STUDENTS_COLLECTION = 'students';
 
+// Fetch students primarily from Firestore. 
+// This is the Source of Truth because it contains the FCM Tokens written by the Parent App.
 export const getStudents = async (): Promise<Student[]> => {
   try {
     const studentsCol = collection(db, STUDENTS_COLLECTION);
     const querySnapshot = await getDocs(studentsCol);
+    
     if (querySnapshot.empty) {
       console.log('No students found in Firestore.');
       return [];
@@ -36,6 +39,46 @@ export const seedDatabase = async (): Promise<void> => {
     console.error("Error seeding database:", error);
     throw error;
   }
+};
+
+// New Function: Reads Google Sheet and updates Firestore
+// It PRESERVES existing Tokens if a parent has already registered.
+export const syncSheetToFirestore = async (): Promise<string> => {
+    try {
+        // 1. Fetch fresh roster from Google Sheets
+        const sheetStudents = await fetchStudentsFromGoogleSheet();
+        if (sheetStudents.length === 0) throw new Error("Google Sheet is empty or unreadable.");
+
+        const batch = writeBatch(db);
+        let updatedCount = 0;
+
+        // 2. Loop through every student from the sheet
+        for (const sheetStudent of sheetStudents) {
+            const studentRef = doc(db, STUDENTS_COLLECTION, sheetStudent.studentCode);
+            const studentSnap = await getDoc(studentRef);
+
+            if (studentSnap.exists()) {
+                const existingData = studentSnap.data() as Student;
+                // MERGE STRATEGY: Update name/class/phone, but KEEP the fcmToken if the parent has logged in via Mobile App
+                const mergedData = {
+                    ...sheetStudent,
+                    fcmToken: existingData.fcmToken || sheetStudent.fcmToken || '', // Prefer existing token
+                    status: existingData.status || 'Present' // Preserve attendance status if set today
+                };
+                batch.set(studentRef, mergedData);
+            } else {
+                // New Student
+                batch.set(studentRef, sheetStudent);
+            }
+            updatedCount++;
+        }
+
+        await batch.commit();
+        return `Synced ${updatedCount} students from Google Sheet to Firestore successfully.`;
+    } catch (error) {
+        console.error("Sync failed:", error);
+        throw error;
+    }
 };
 
 const normalizeKey = (key: string) => key.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -178,7 +221,7 @@ const parseCSV = (text: string): Student[] => {
         className: className || '1',
         parentName: (idxPName > -1 && data[idxPName]) ? data[idxPName] : '',
         parentPhone: (idxPhone > -1 && data[idxPhone]) ? data[idxPhone] : '',
-        fcmToken: '',
+        fcmToken: '', // Token is empty initially. Parent App must fill this.
         status: 'Present',
         notificationSent: false
      } as Student;
