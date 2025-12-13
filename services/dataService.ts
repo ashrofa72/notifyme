@@ -54,7 +54,8 @@ export const syncSheetToFirestore = async (): Promise<string> => {
 
         // 2. Loop through every student from the sheet
         for (const sheetStudent of sheetStudents) {
-            const studentRef = doc(db, STUDENTS_COLLECTION, sheetStudent.studentCode);
+            const code = sheetStudent.studentCode.trim().toUpperCase();
+            const studentRef = doc(db, STUDENTS_COLLECTION, code);
             const studentSnap = await getDoc(studentRef);
 
             if (studentSnap.exists()) {
@@ -62,13 +63,14 @@ export const syncSheetToFirestore = async (): Promise<string> => {
                 // MERGE STRATEGY: Update name/class/phone, but KEEP the fcmToken if the parent has logged in via Mobile App
                 const mergedData = {
                     ...sheetStudent,
+                    studentCode: code,
                     fcmToken: existingData.fcmToken || sheetStudent.fcmToken || '', // Prefer existing token
                     status: existingData.status || 'Present' // Preserve attendance status if set today
                 };
                 batch.set(studentRef, mergedData);
             } else {
                 // New Student
-                batch.set(studentRef, sheetStudent);
+                batch.set(studentRef, { ...sheetStudent, studentCode: code });
             }
             updatedCount++;
         }
@@ -149,7 +151,7 @@ export const fetchStudentsFromGoogleSheet = async (): Promise<Student[]> => {
         const fcmToken = findValue(['token', 'fcm']) || '';
 
         return {
-            studentCode: String(studentCode),
+            studentCode: String(studentCode).trim().toUpperCase(),
             studentName: studentName,
             grade: String(rawGrade),
             className: String(rawClass),
@@ -214,8 +216,10 @@ const parseCSV = (text: string): Student[] => {
          }
      }
 
+     const code = (idxCode > -1 && data[idxCode]) ? data[idxCode] : `GS-${1000 + index}`;
+
      return {
-        studentCode: (idxCode > -1 && data[idxCode]) ? data[idxCode] : `GS-${1000 + index}`,
+        studentCode: code.trim().toUpperCase(),
         studentName: (idxName > -1 && data[idxName]) ? data[idxName] : 'Unknown Student',
         grade: grade || '1',
         className: className || '1',

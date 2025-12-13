@@ -3,7 +3,7 @@ import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db, messaging } from '../services/firebase';
 import { getToken } from 'firebase/messaging';
 import { Student } from '../types';
-import { Bell, BellRing, CheckCircle, AlertCircle, Clock, Loader2, LogOut, ArrowLeft } from 'lucide-react';
+import { Bell, BellRing, CheckCircle, AlertCircle, Clock, Loader2, LogOut, ExternalLink } from 'lucide-react';
 
 interface ParentPortalProps {
   onBack: () => void;
@@ -16,6 +16,12 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
   const [error, setError] = useState('');
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<NotificationPermission>(Notification.permission);
+  const [isIframe, setIsIframe] = useState(false);
+
+  useEffect(() => {
+    // Detect if running in an iframe (Preview environment)
+    setIsIframe(window.self !== window.top);
+  }, []);
 
   // Listen to real-time updates when connected
   useEffect(() => {
@@ -60,22 +66,21 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
   };
 
   const requestNotificationPermission = async (code: string) => {
-    // Check if running in an iframe (common in cloud IDE previews)
-    const isIframe = window.self !== window.top;
-    
     try {
       let swRegistration = undefined;
 
       // 1. Register Service Worker (Required for background notifications)
       if ('serviceWorker' in navigator) {
         try {
-           // FIX: Construct absolute URL using window.location.origin
-           // This prevents the "origin mismatch" error when running in Cloud IDE previews
+           // FIX: Use specific scope and absolute URL to prevent Origin Mismatch errors in Cloud environments
            const swUrl = new URL('/firebase-messaging-sw.js', window.location.origin).href;
-           swRegistration = await navigator.serviceWorker.register(swUrl);
-           console.log('Service Worker registered:', swRegistration);
+           swRegistration = await navigator.serviceWorker.register(swUrl, {
+             scope: '/'
+           });
+           console.log('Service Worker registered with scope:', swRegistration.scope);
         } catch (swError) {
-           console.warn('Service Worker registration failed, attempting to proceed without explicit registration:', swError);
+           console.warn('Service Worker registration warning:', swError);
+           // We continue, as sometimes the browser uses a cached worker or handles it implicitly
         }
       }
 
@@ -86,7 +91,7 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
       if (permission === 'granted') {
         // 3. Get Token
         const token = await getToken(messaging, {
-            vapidKey: 'BOBNbWvVfFjVd2QG_vXn7rG2oO3Xqq9XyZ4Q6Qz8_8k', // Optional: Put your generated VAPID key here if you have one, or remove this line to use default
+            vapidKey: 'BOBNbWvVfFjVd2QG_vXn7rG2oO3Xqq9XyZ4Q6Qz8_8k', 
             serviceWorkerRegistration: swRegistration
         });
         
@@ -99,20 +104,24 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
            alert("تم تفعيل الإشعارات بنجاح!");
         }
       } else {
-        // If denied, give a specific hint if they are in an iframe
-        setError(isIframe 
-          ? "تم رفض الإذن. (ملاحظة: أنت تستخدم وضع المعاينة، يرجى فتح الموقع في نافذة جديدة Open in New Tab لكي تعمل الإشعارات)." 
-          : "تم رفض الإذن بالإشعارات. يرجى تفعيلها من إعدادات المتصفح.");
+        // Handle blocked permission
+        if (permission === 'denied') {
+             setError("تم حظر الإشعارات. يرجى النقر على أيقونة القفل بجوار الرابط في المتصفح واختيار 'Reset Permission' ثم إعادة المحاولة.");
+        }
       }
     } catch (err: any) {
       console.error('Failed to enable notifications:', err);
-      // Handle the origin error gracefully
+      
       if (err.message && (err.message.includes('origin') || err.message.includes('register'))) {
-          setError("خطأ تقني: يرجى فتح الموقع في نافذة جديدة (Open in New Tab) لأن المتصفح يحظر تسجيل Service Worker في وضع المعاينة.");
+          setError("خطأ في بيئة التشغيل: يرجى التأكد من فتح الموقع في نافذة مستقلة (Open in New Tab) وليس داخل المحرر.");
       } else {
           setError(`فشل تفعيل التنبيهات: ${err.message}`);
       }
     }
+  };
+
+  const openInNewTab = () => {
+    window.open(window.location.href, '_blank');
   };
 
   const getStatusColor = (status: string) => {
@@ -153,6 +162,25 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
           </div>
 
           <div className="p-6">
+            {isIframe && (
+                <div className="mb-4 p-3 bg-yellow-50 text-yellow-700 text-sm rounded-lg border border-yellow-200">
+                    <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                        <div>
+                            <p className="font-bold mb-1">تنبيه وضع المعاينة</p>
+                            <p>قد لا تعمل الإشعارات داخل نافذة المعاينة هذه.</p>
+                            <button 
+                                onClick={openInNewTab}
+                                className="mt-2 text-blue-600 underline flex items-center gap-1 hover:text-blue-800"
+                            >
+                                <ExternalLink className="w-3 h-3" />
+                                فتح في نافذة جديدة
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {error && (
                <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center gap-2 rtl:text-right">
                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -234,8 +262,9 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
                 )}
                 
                 {permissionStatus === 'denied' && (
-                   <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg text-center">
-                      تم حظر الإشعارات. يرجى تفعيلها من إعدادات المتصفح لتصلك التنبيهات.
+                   <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg text-center border border-red-100">
+                      <p className="font-bold mb-1">تم حظر الإشعارات</p>
+                      <p>لإصلاح ذلك، اضغط على أيقونة القفل 🔒 في شريط العنوان، واختر "Reset Permission" أو "Allow"، ثم أعد تحميل الصفحة.</p>
                    </div>
                 )}
              </div>

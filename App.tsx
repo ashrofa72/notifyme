@@ -98,9 +98,13 @@ const App: React.FC = () => {
                 
                 // Merge Logic: Preserve FCM Token and Status from existing state
                 const mergedSheetStudents = sheetStudents.map(newS => {
-                   const existing = prev.find(p => p.studentCode === newS.studentCode);
+                   // Ensure robust case-insensitive matching
+                   const newCode = newS.studentCode.trim().toUpperCase();
+                   const existing = prev.find(p => p.studentCode.trim().toUpperCase() === newCode);
+                   
                    return {
                       ...newS,
+                      studentCode: newCode, // Store normalized
                       // CRITICAL: Keep existing token if the sheet doesn't have one (which it usually doesn't)
                       fcmToken: existing?.fcmToken || newS.fcmToken || '', 
                       status: existing?.status || newS.status, 
