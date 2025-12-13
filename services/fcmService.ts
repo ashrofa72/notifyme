@@ -5,10 +5,10 @@ export const setStoredServerKey = (key: string) => localStorage.setItem('FCM_SER
 
 // List of CORS proxies to try in order of reliability
 const PROXY_GENERATORS = [
-    // 1. corsproxy.io - Standard reliable proxy
+    // 1. corsproxy.io - Standard reliable proxy (supports POST)
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    // 2. AllOrigins - Good backup (Raw mode)
-    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    // 2. CodeTabs - Good alternative for POST requests
+    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
     // 3. ThingProxy - Fallback
     (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
 ];
@@ -21,7 +21,11 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     ? `تنبيه: ابنكم ${student.studentName} غائب اليوم.` 
     : `تنبيه: وصل ابنكم ${student.studentName} متأخراً اليوم.`;
 
-  const notificationId = crypto.randomUUID();
+  // Safe ID generation (crypto.randomUUID requires secure context)
+  const notificationId = typeof crypto !== 'undefined' && crypto.randomUUID 
+    ? crypto.randomUUID() 
+    : `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
   const timestamp = new Date().toLocaleString('ar-EG');
 
   // 1. Validation
@@ -85,6 +89,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     for (const generateProxyUrl of PROXY_GENERATORS) {
         try {
             const proxyUrl = generateProxyUrl(FCM_ENDPOINT);
+            console.log(`Trying proxy: ${proxyUrl}`);
             const res = await performFetch(proxyUrl);
             
             const status = res.status;
@@ -94,7 +99,6 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
             // If the proxy returns HTML (like 404 Not Found page, or 502 Bad Gateway page), 
             // it is NOT a response from Firebase. We must SKIP it and try the next proxy.
             const isJson = contentType.includes("json");
-            const isHtml = contentType.includes("html");
             
             // Scenario 1: Success (200 OK)
             if (res.ok) {
@@ -120,7 +124,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
             lastErrorMsg = `Proxy Error ${status}`;
             
             // Add small delay before hitting next proxy
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 500));
 
         } catch (proxyError: any) {
             console.warn("Proxy connection attempt failed:", proxyError);
@@ -130,7 +134,12 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
 
     // If loop finishes and we still don't have a valid response object
     if (!response) {
-        throw new Error(`تعذر الاتصال بخادم Firebase. جميع الوسطاء مشغولون حالياً. (${lastErrorMsg})`);
+        let detailedMsg = lastErrorMsg;
+        // Improve error message for common network issues
+        if (lastErrorMsg.includes("Failed to fetch") || lastErrorMsg.includes("NetworkError")) {
+             detailedMsg = "خطأ شبكة (Network Error). قد يكون بسبب مانع الإعلانات (AdBlock) أو جدار حماية.";
+        }
+        throw new Error(`تعذر الاتصال بخادم Firebase عبر جميع الوسطاء. (${detailedMsg})`);
     }
 
     if (response.status === 401) {
@@ -172,7 +181,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     
     let userMessage = error.message;
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        userMessage = "خطأ شبكة: تعذر الاتصال بالإنترنت.";
+        userMessage = "خطأ شبكة: تعذر الاتصال بالإنترنت أو تم حظر الطلب (AdBlock).";
     }
 
     return {
