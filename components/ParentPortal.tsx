@@ -56,6 +56,7 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
       setStep('DASHBOARD');
       
       // Try to register for notifications immediately
+      // We pass the code so we can save the token to the correct document
       requestNotificationPermission(code);
     } catch (err) {
       console.error(err);
@@ -77,6 +78,11 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
            swRegistration = await navigator.serviceWorker.register(swUrl, {
              scope: '/'
            });
+           
+           // CRITICAL: Wait for the service worker to be ready/active before asking for token
+           // This prevents "failed to register" errors in some browsers
+           await navigator.serviceWorker.ready;
+           
            console.log('Service Worker registered with scope:', swRegistration.scope);
         } catch (swError) {
            console.warn('Service Worker registration warning:', swError);
@@ -90,18 +96,24 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
 
       if (permission === 'granted') {
         // 3. Get Token
+        // NOTE: We removed the hardcoded 'vapidKey'. If your project requires one, 
+        // generate it in Firebase Console -> Project Settings -> Cloud Messaging -> Web Push certificates
+        // and add it back as: vapidKey: 'YOUR_KEY_HERE'
+        // Removing it usually allows Firebase to use the default project config.
         const token = await getToken(messaging, {
-            vapidKey: 'BOBNbWvVfFjVd2QG_vXn7rG2oO3Xqq9XyZ4Q6Qz8_8k', 
             serviceWorkerRegistration: swRegistration
         });
         
         if (token) {
            // 4. Save Token to Firestore
            await updateDoc(doc(db, 'students', code), {
-             fcmToken: token
+             fcmToken: token,
+             lastTokenUpdate: new Date().toISOString() // Track when it was last updated
            });
            console.log('Device linked successfully:', token);
-           alert("تم تفعيل الإشعارات بنجاح!");
+           alert("تم تفعيل الإشعارات بنجاح! تم ربط هذا الجهاز بالطالب.");
+        } else {
+           throw new Error("لم يتم استلام Token من Firebase.");
         }
       } else {
         // Handle blocked permission
@@ -112,11 +124,16 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
     } catch (err: any) {
       console.error('Failed to enable notifications:', err);
       
-      if (err.message && (err.message.includes('origin') || err.message.includes('register'))) {
-          setError("خطأ في بيئة التشغيل: يرجى التأكد من فتح الموقع في نافذة مستقلة (Open in New Tab) وليس داخل المحرر.");
-      } else {
-          setError(`فشل تفعيل التنبيهات: ${err.message}`);
+      let msg = err.message || 'خطأ غير معروف';
+      
+      if (msg.includes('origin') || msg.includes('register')) {
+          msg = "خطأ في بيئة التشغيل: يرجى التأكد من فتح الموقع في نافذة مستقلة (Open in New Tab).";
+      } else if (msg.includes('Missing VAPID key')) {
+          msg = "خطأ في إعدادات Firebase: يرجى توليد Key Pair من لوحة التحكم.";
       }
+
+      setError(`فشل تفعيل التنبيهات: ${msg}`);
+      alert(`عذراً، حدث خطأ أثناء تفعيل التنبيهات:\n${msg}`);
     }
   };
 
