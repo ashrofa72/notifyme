@@ -5,10 +5,10 @@ export const setStoredServerKey = (key: string) => localStorage.setItem('FCM_SER
 
 // List of CORS proxies to try in order
 const PROXY_GENERATORS = [
-    // Primary: corsproxy.io (Fast, usually reliable)
-    (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    // Backup: thingproxy (Reliable fallback)
+    // Primary: thingproxy (Often reliable)
     (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+    // Backup: corsproxy.io (Can be spotty)
+    (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
 ];
 
 export const sendFCMNotification = async (student: Student): Promise<NotificationLog> => {
@@ -32,7 +32,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
       type: student.status === 'Absent' ? 'Absent' : 'Late',
       timestamp: timestamp,
       status: 'Failed',
-      message: `فشل: لم يتم ربط جهاز ولي الأمر (لا يوجد Token).`,
+      message: `فشل: لا يوجد رمز (Token). يرجى ربط جهاز ولي الأمر.`,
     };
   }
 
@@ -81,60 +81,57 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
 
   try {
     let response;
-    let successfulProxy = false;
-
-    // Attempt 1: Direct Fetch (Will likely fail with CORS in browser, but good to try)
-    try {
-        response = await performFetch(FCM_ENDPOINT);
-    } catch (e) {
-        // Expected CORS error
-    }
-
-    // Attempt 2: Try Proxies Loop
-    if (!response || !response.ok) {
-        console.log("Direct fetch failed or blocked. Trying proxies...");
+    
+    // Attempt 1: Try Proxies Loop
+    console.log("Sending FCM notification via proxy...");
         
-        for (const generateProxyUrl of PROXY_GENERATORS) {
-            try {
-                const proxyUrl = generateProxyUrl(FCM_ENDPOINT);
-                response = await performFetch(proxyUrl);
-                
-                // If we get a 404 HTML page, treat it as a proxy failure, not an API failure
-                if (response.status === 404) {
-                    const contentType = response.headers.get("content-type");
-                    if (contentType && contentType.includes("html")) {
-                        console.warn(`Proxy ${proxyUrl} returned HTML 404 (Service Down). Trying next...`);
-                        continue; 
-                    }
+    for (const generateProxyUrl of PROXY_GENERATORS) {
+        try {
+            const proxyUrl = generateProxyUrl(FCM_ENDPOINT);
+            response = await performFetch(proxyUrl);
+            
+            // If we get a 404 HTML page, treat it as a proxy failure
+            if (response.status === 404) {
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("html")) {
+                    continue; 
                 }
-
-                if (response.ok) {
-                    successfulProxy = true;
-                    break; // Success! Stop looping.
-                }
-            } catch (proxyError) {
-                console.warn("Proxy attempt failed:", proxyError);
             }
+            
+            // If we get 401, it is NOT a proxy error, it is a Key error. Stop trying other proxies.
+            if (response.status === 401) {
+                break;
+            }
+
+            // If network success (even if 400 bad request), stop loop
+            if (response) {
+                break; 
+            }
+        } catch (proxyError) {
+            console.warn("Proxy attempt failed:", proxyError);
         }
     }
 
     if (!response) {
-        throw new Error("Network Error: Could not reach Firebase via any proxy.");
+        throw new Error("Proxy Error: تعذر الاتصال بخادم Firebase عبر الوسيط.");
+    }
+
+    if (response.status === 401) {
+        throw new Error("401 Unauthorized: مفتاح الخادم (Legacy Server Key) خطأ. يرجى التأكد من الإعدادات.");
     }
 
     if (!response.ok) {
         const text = await response.text();
-        // Check if the response is the HTML 404 from a proxy
-        if (text.includes("<!DOCTYPE html") || text.includes("Not Found")) {
-            throw new Error("Proxy Error: The proxy service is down or blocked. Please try again later.");
-        }
-        throw new Error(`HTTP ${response.status}: ${text}`);
+        throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
     }
 
     const data = await response.json();
     
     if (data.failure > 0) {
        const errorType = data.results?.[0]?.error || "Unknown FCM Error";
+       if (errorType === "InvalidRegistration" || errorType === "NotRegistered") {
+           throw new Error("الرمز (Token) غير صالح أو منتهي الصلاحية.");
+       }
        throw new Error(`Firebase Error: ${errorType}`);
     }
 
@@ -156,12 +153,6 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
 
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
         userMessage = "خطأ شبكة: تعذر الاتصال. يرجى التحقق من الإنترنت.";
-    } else if (userMessage.includes('InvalidRegistration')) {
-        userMessage = "الرمز (Token) غير صالح أو منتهي الصلاحية.";
-    } else if (userMessage.includes('Unauthorized') || userMessage.includes('401')) {
-        userMessage = "مفتاح الخادم (Server Key) غير صحيح.";
-    } else if (userMessage.includes('Proxy Error')) {
-        userMessage = "خدمة الوسيط (Proxy) مشغولة حالياً. يرجى المحاولة مرة أخرى.";
     }
 
     return {

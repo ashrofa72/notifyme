@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code } from 'lucide-react';
+import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, AlertTriangle } from 'lucide-react';
 import { getStoredServerKey, setStoredServerKey } from '../services/fcmService';
 import { seedDatabase, syncSheetToFirestore } from '../services/dataService';
 
@@ -60,16 +60,29 @@ export const SettingsView: React.FC = () => {
             <Key className="w-5 h-5 text-blue-600" />
             1. مفتاح الخادم (FCM Server Key)
           </h3>
-          <p className="text-sm text-gray-500 mt-1 mb-4">
-            أدخل مفتاح الخادم القديم (Legacy Key) لتمكين الإرسال.
-          </p>
+          
+          <div className="mt-3 mb-4 bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-sm text-yellow-800">
+             <h4 className="font-bold flex items-center gap-1 mb-1">
+                 <AlertTriangle className="w-4 h-4" />
+                 هام جداً:
+             </h4>
+             <p className="mb-2">
+                 لا تستخدم "Web API Key" أو "App ID". يجب استخدام <strong>Cloud Messaging API (Legacy)</strong>.
+             </p>
+             <ol className="list-decimal list-inside space-y-1 text-yellow-700">
+                 <li>اذهب إلى Firebase Console {'>'} Project Settings.</li>
+                 <li>اختر تبويب <strong>Cloud Messaging</strong>.</li>
+                 <li>إذا لم تجد "Cloud Messaging API (Legacy)"، اضغط على الثلاث نقاط في الزاوية واختر <strong>Manage API in Google Cloud Console</strong> ثم قم بتفعيلها.</li>
+                 <li>انسخ المفتاح الطويل الذي يبدأ بـ <code>AIza...</code> وضعه هنا.</li>
+             </ol>
+          </div>
           
           <div className="flex gap-3">
             <input 
               type="password" 
               value={serverKey}
               onChange={(e) => setServerKey(e.target.value)}
-              placeholder="Ex: AIzaSy..."
+              placeholder="Legacy Server Key (Starts with AIza...)"
               className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-left"
               dir="ltr"
             />
