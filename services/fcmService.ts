@@ -5,18 +5,17 @@ export const setStoredServerKey = (key: string) => localStorage.setItem('FCM_SER
 
 // List of CORS proxies to try in order of reliability
 const PROXY_GENERATORS = [
-    // 1. corsproxy.io - Usually the most stable
+    // 1. corsproxy.io - Standard reliable proxy
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    // 2. ThingProxy - Good backup, can be busy
+    // 2. AllOrigins - Good backup (Raw mode)
+    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    // 3. ThingProxy - Fallback
     (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
-    // 3. CodeTabs - Another backup option
-    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
 ];
 
 export const sendFCMNotification = async (student: Student): Promise<NotificationLog> => {
   const serverKey = getStoredServerKey();
   
-  // Determine message body based on status
   const title = "تنبيه حضور - مدرسة الزهراء";
   const body = student.status === 'Absent' 
     ? `تنبيه: ابنكم ${student.studentName} غائب اليوم.` 
@@ -25,7 +24,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
   const notificationId = crypto.randomUUID();
   const timestamp = new Date().toLocaleString('ar-EG');
 
-  // 1. Validation: Check if Token exists
+  // 1. Validation
   if (!student.fcmToken || student.fcmToken.length < 10) {
     return {
       id: notificationId,
@@ -38,11 +37,10 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     };
   }
 
-  // 2. Simulation Mode (If no server key)
+  // 2. Simulation Mode
   if (!serverKey) {
     console.warn("No FCM Server Key found. Simulating notification.");
     await new Promise((resolve) => setTimeout(resolve, 800));
-    
     return {
       id: notificationId,
       studentName: student.studentName,
@@ -57,10 +55,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
   // 3. Real FCM Logic
   const payload = {
     to: student.fcmToken,
-    notification: {
-      title,
-      body,
-    },
+    notification: { title, body },
     data: {
       studentCode: student.studentCode,
       status: student.status.toLowerCase(),
@@ -82,7 +77,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
   };
 
   try {
-    let response;
+    let response: Response | undefined;
     let lastErrorMsg = "";
     
     console.log("Sending FCM notification via proxies...");
@@ -90,56 +85,63 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     for (const generateProxyUrl of PROXY_GENERATORS) {
         try {
             const proxyUrl = generateProxyUrl(FCM_ENDPOINT);
-            response = await performFetch(proxyUrl);
+            const res = await performFetch(proxyUrl);
             
-            // Handle Proxy-specific failures (HTML responses instead of JSON/API response)
-            // 404 from a proxy often means the proxy service itself is glitching
-            if (response.status === 404) {
-                const contentType = response.headers.get("content-type");
-                if (contentType && contentType.includes("html")) {
-                    console.warn(`Proxy ${proxyUrl} returned 404 HTML. Skipping.`);
-                    continue; 
-                }
-            }
-
-            // 5xx errors (500, 502, 503, 504) are server errors. 
-            // If the proxy returns this, we assume the proxy is down/busy and try the next one.
-            if (response.status >= 500 && response.status < 600) {
-                console.warn(`Proxy ${proxyUrl} failed with status ${response.status}. Trying next...`);
-                continue;
-            }
+            const status = res.status;
+            const contentType = res.headers.get("content-type") || "";
             
-            // If we get 401 Unauthorized, that comes from Firebase itself (invalid key). 
-            // No point trying other proxies.
-            if (response.status === 401) {
+            // CRITICAL: Filter out Proxy Errors
+            // If the proxy returns HTML (like 404 Not Found page, or 502 Bad Gateway page), 
+            // it is NOT a response from Firebase. We must SKIP it and try the next proxy.
+            const isJson = contentType.includes("json");
+            const isHtml = contentType.includes("html");
+            
+            // Scenario 1: Success (200 OK)
+            if (res.ok) {
+                response = res;
                 break;
             }
 
-            // If we got a response that isn't a 5xx or broken 404, assume we connected to Firebase
-            if (response) {
-                break; 
+            // Scenario 2: Auth Error (401). This comes from Firebase, so it's a "valid" failure. Stop loop.
+            if (status === 401) {
+                response = res;
+                break;
             }
+
+            // Scenario 3: Real Firebase Error (400/404/500 but with JSON body)
+            if (isJson) {
+                response = res;
+                break;
+            }
+
+            // Scenario 4: Proxy Error (HTML page, text, or weird 404/502 from proxy middleware)
+            // We ignore this response and try the next proxy.
+            console.warn(`Proxy ${proxyUrl} returned invalid response [${status}] (${contentType}). Skipping.`);
+            lastErrorMsg = `Proxy Error ${status}`;
+            
+            // Add small delay before hitting next proxy
+            await new Promise(r => setTimeout(r, 200));
+
         } catch (proxyError: any) {
             console.warn("Proxy connection attempt failed:", proxyError);
             lastErrorMsg = proxyError.message;
-            // Wait slightly before next try
-            await new Promise(r => setTimeout(r, 500));
         }
     }
 
+    // If loop finishes and we still don't have a valid response object
     if (!response) {
-        throw new Error(`تعذر الاتصال بخادم Firebase عبر جميع الوسطاء المتاحين. (${lastErrorMsg})`);
+        throw new Error(`تعذر الاتصال بخادم Firebase. جميع الوسطاء مشغولون حالياً. (${lastErrorMsg})`);
     }
 
     if (response.status === 401) {
-        throw new Error("401 Unauthorized: مفتاح الخادم (Legacy Server Key) خطأ. يرجى التأكد من الإعدادات.");
+        throw new Error("401 Unauthorized: مفتاح الخادم (Legacy Server Key) خطأ.");
     }
 
     if (!response.ok) {
         const text = await response.text();
-        // Check for specific proxy busy messages in text
-        if (text.toLowerCase().includes("busy") || text.toLowerCase().includes("unavailable") || text.toLowerCase().includes("timeout")) {
-             throw new Error("الوسيط (Proxy) مشغول حالياً. حاول مرة أخرى لاحقاً.");
+        // Double check: If it's HTML error that slipped through
+        if (text.trim().startsWith("<")) {
+             throw new Error("خطأ من الوسيط (Proxy): استجابة غير صحيحة (HTML). حاول مرة أخرى.");
         }
         throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
     }
@@ -169,9 +171,8 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     console.error("Failed to send notification", error);
     
     let userMessage = error.message;
-
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        userMessage = "خطأ شبكة: تعذر الاتصال بالإنترنت أو بخدمة الوسيط.";
+        userMessage = "خطأ شبكة: تعذر الاتصال بالإنترنت.";
     }
 
     return {
