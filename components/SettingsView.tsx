@@ -17,8 +17,6 @@ export const SettingsView: React.FC = () => {
   const isValidFormat = serverKey === '' || serverKey.startsWith('AIza');
   const isClientKey = serverKey === firebaseConfig.apiKey;
 
-  // Direct link to enable Legacy API for this specific project
-  const enableApiUrl = `https://console.cloud.google.com/apis/library/googlecloudmessaging.googleapis.com?project=${firebaseConfig.projectId}`;
   const firebaseSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/settings/cloudmessaging`;
 
   const handleSaveKey = () => {
@@ -80,45 +78,42 @@ export const SettingsView: React.FC = () => {
             1. مفتاح الخادم (FCM Server Key)
           </h3>
           
-          <div className="mt-3 mb-4 bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-sm text-yellow-800">
+          <div className="mt-3 mb-4 bg-blue-50 border border-blue-200 p-4 rounded-lg text-sm text-blue-800">
              <h4 className="font-bold flex items-center gap-1 mb-2">
                  <AlertTriangle className="w-4 h-4" />
-                 هام جداً:
+                 كيف تحصل على المفتاح الصحيح؟
              </h4>
-             <p className="mb-3">
-                 المفتاح الذي وجدته (Service Account JSON) <strong>ليس هو المطلوب</strong> هنا. نحن نحتاج "Legacy Server Key".
-                 <br/>
-                 اتبع الخطوات التالية للحصول عليه بسهولة:
+             <p className="mb-3 text-gray-700">
+                 حدث خطأ في الرابط السابق. يرجى اتباع الخطوات اليدوية التالية بدقة:
              </p>
              
-             <div className="space-y-3 bg-white/50 p-3 rounded border border-yellow-100">
-                 <div className="flex items-center gap-2">
-                     <span className="bg-yellow-200 text-yellow-800 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs">1</span>
-                     <p>اضغط الزر أدناه لتفعيل <strong>Cloud Messaging API (Legacy)</strong> في مشروعك:</p>
+             <div className="space-y-4 bg-white p-4 rounded border border-blue-100">
+                 <div className="flex gap-3">
+                     <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-xs">1</span>
+                     <div className="flex-1">
+                        <p className="mb-2 font-medium">اضغط الزر أدناه لفتح إعدادات Firebase:</p>
+                        <a 
+                            href={firebaseSettingsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition text-sm"
+                        >
+                            <Settings className="w-4 h-4" />
+                            فتح Firebase Console (Cloud Messaging)
+                        </a>
+                     </div>
                  </div>
-                 <a 
-                    href={enableApiUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 py-2 rounded font-medium transition"
-                 >
-                    <ExternalLink className="w-4 h-4" />
-                    تفعيل الـ API (Google Cloud Console)
-                 </a>
-                 
-                 <div className="flex items-center gap-2 mt-2">
-                     <span className="bg-yellow-200 text-yellow-800 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs">2</span>
-                     <p>بعد التفعيل، اذهب إلى إعدادات Firebase وانسخ الـ <strong>Server Key</strong>:</p>
+
+                 <div className="flex gap-3">
+                     <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-xs">2</span>
+                     <div className="flex-1">
+                        <p className="mb-1 text-gray-800">ابحث عن قسم <strong>Cloud Messaging API (Legacy)</strong> في تلك الصفحة.</p>
+                        <ul className="list-disc list-inside text-gray-600 space-y-1 text-xs mt-1">
+                            <li>إذا كان <strong>Enabled</strong>: انسخ الـ Key الذي يظهر تحته (يبدأ بـ <code>AIza</code>).</li>
+                            <li>إذا كان <strong>Disabled</strong>: اضغط على النقاط الثلاث (⋮) ثم اختر <strong>Manage API in Google Cloud Console</strong> وقم بتفعيله من هناك، ثم عد وحدث الصفحة.</li>
+                        </ul>
+                     </div>
                  </div>
-                 <a 
-                    href={firebaseSettingsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-medium transition"
-                 >
-                    <Settings className="w-4 h-4" />
-                    الذهاب إلى Firebase Console (Cloud Messaging)
-                 </a>
              </div>
           </div>
           
