@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, AlertTriangle, Settings } from 'lucide-react';
+import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, AlertTriangle, Settings, CheckCircle, XCircle } from 'lucide-react';
 import { getStoredServerKey, setStoredServerKey } from '../services/fcmService';
 import { seedDatabase, syncSheetToFirestore } from '../services/dataService';
+import { firebaseConfig } from '../services/firebase';
 
 export const SettingsView: React.FC = () => {
   const [serverKey, setServerKey] = useState('');
@@ -12,7 +13,21 @@ export const SettingsView: React.FC = () => {
     setServerKey(getStoredServerKey());
   }, []);
 
+  // Validation Logic
+  const isValidFormat = serverKey === '' || serverKey.startsWith('AIza');
+  const isClientKey = serverKey === firebaseConfig.apiKey;
+
   const handleSaveKey = () => {
+    if (serverKey && !serverKey.startsWith('AIza')) {
+        alert("تنسيق المفتاح غير صحيح. يجب أن يبدأ بـ 'AIza'.");
+        return;
+    }
+    
+    if (isClientKey) {
+        alert("تنبيه: لقد أدخلت 'Client API Key'. هذا المفتاح مخصص لاتصال التطبيق فقط ولا يملك صلاحية إرسال الإشعارات.\n\nيرجى نسخ 'Server Key' من تبويب Cloud Messaging.");
+        return;
+    }
+
     setStoredServerKey(serverKey);
     alert('تم حفظ مفتاح الخادم بنجاح!');
   };
@@ -84,22 +99,45 @@ export const SettingsView: React.FC = () => {
              </ol>
           </div>
           
-          <div className="flex gap-3">
-            <input 
-              type="password" 
-              value={serverKey}
-              onChange={(e) => setServerKey(e.target.value)}
-              placeholder="Legacy Server Key (Starts with AIza...)"
-              className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-left"
-              dir="ltr"
-            />
-            <button 
-              onClick={handleSaveKey}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2"
-            >
-              <Save className="w-4 h-4" />
-              حفظ
-            </button>
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-3">
+                <div className="relative flex-1">
+                    <input 
+                    type="password" 
+                    value={serverKey}
+                    onChange={(e) => setServerKey(e.target.value.trim())}
+                    placeholder="Legacy Server Key (Starts with AIza...)"
+                    className={`w-full p-2 border rounded-lg focus:ring-2 outline-none text-left pl-10 ${
+                        !isValidFormat || isClientKey ? 'border-red-300 focus:ring-red-500 bg-red-50' : 'border-gray-300 focus:ring-blue-500'
+                    }`}
+                    dir="ltr"
+                    />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                        {serverKey && (isValidFormat && !isClientKey ? <CheckCircle className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-red-500" />)}
+                    </div>
+                </div>
+                <button 
+                onClick={handleSaveKey}
+                disabled={!isValidFormat || !serverKey || isClientKey}
+                className={`text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2 ${
+                    isValidFormat && serverKey && !isClientKey ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'
+                }`}
+                >
+                <Save className="w-4 h-4" />
+                حفظ
+                </button>
+            </div>
+            {!isValidFormat && (
+                <p className="text-red-600 text-xs font-medium px-1">
+                    تنبيه: هذا المفتاح لا يبدو صحيحاً. مفاتيح Google API يجب أن تبدأ بـ "AIza".
+                </p>
+            )}
+            {isClientKey && (
+                <p className="text-orange-600 text-xs font-bold px-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    تنبيه: هذا هو مفتاح العميل (Client Key). لن يعمل لإرسال الإشعارات. يرجى إحضار الـ Server Key.
+                </p>
+            )}
           </div>
         </div>
 

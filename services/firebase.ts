@@ -3,7 +3,7 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getMessaging } from 'firebase/messaging';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyB69dA55hcFnFZIsIxCFccDMizTNPMuuwE",
   authDomain: "notify-me-efcdf.firebaseapp.com",
   projectId: "notify-me-efcdf",
