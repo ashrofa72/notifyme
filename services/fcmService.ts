@@ -3,6 +3,14 @@ import { Student, NotificationLog } from '../types';
 export const getStoredServerKey = () => localStorage.getItem('FCM_SERVER_KEY') || '';
 export const setStoredServerKey = (key: string) => localStorage.setItem('FCM_SERVER_KEY', key);
 
+// List of CORS proxies to try in order
+const PROXY_GENERATORS = [
+    // Primary: corsproxy.io (Fast, usually reliable)
+    (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    // Backup: thingproxy (Reliable fallback)
+    (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+];
+
 export const sendFCMNotification = async (student: Student): Promise<NotificationLog> => {
   const serverKey = getStoredServerKey();
   
@@ -60,12 +68,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
 
   const FCM_ENDPOINT = 'https://fcm.googleapis.com/fcm/send';
 
-  const performFetch = async (useProxy: boolean) => {
-    // Using corsproxy.io to bypass browser CORS restrictions for the Legacy HTTP API
-    const url = useProxy 
-      ? `https://corsproxy.io/?${encodeURIComponent(FCM_ENDPOINT)}` 
-      : FCM_ENDPOINT;
-      
+  const performFetch = async (url: string) => {
     return fetch(url, {
       method: 'POST',
       headers: {
@@ -78,25 +81,59 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
 
   try {
     let response;
-    
+    let successfulProxy = false;
+
+    // Attempt 1: Direct Fetch (Will likely fail with CORS in browser, but good to try)
     try {
-        // Attempt 1: Direct Fetch
-        response = await performFetch(false);
-    } catch (networkError) {
-        // Attempt 2: Fallback to Proxy if CORS/Network error occurs
-        console.warn("Direct FCM fetch failed (likely CORS). Retrying with proxy...", networkError);
-        response = await performFetch(true);
+        response = await performFetch(FCM_ENDPOINT);
+    } catch (e) {
+        // Expected CORS error
     }
 
+    // Attempt 2: Try Proxies Loop
     if (!response || !response.ok) {
-        const text = response ? await response.text() : "Network Error";
-        throw new Error(`HTTP ${response?.status || 'Failed'}: ${text}`);
+        console.log("Direct fetch failed or blocked. Trying proxies...");
+        
+        for (const generateProxyUrl of PROXY_GENERATORS) {
+            try {
+                const proxyUrl = generateProxyUrl(FCM_ENDPOINT);
+                response = await performFetch(proxyUrl);
+                
+                // If we get a 404 HTML page, treat it as a proxy failure, not an API failure
+                if (response.status === 404) {
+                    const contentType = response.headers.get("content-type");
+                    if (contentType && contentType.includes("html")) {
+                        console.warn(`Proxy ${proxyUrl} returned HTML 404 (Service Down). Trying next...`);
+                        continue; 
+                    }
+                }
+
+                if (response.ok) {
+                    successfulProxy = true;
+                    break; // Success! Stop looping.
+                }
+            } catch (proxyError) {
+                console.warn("Proxy attempt failed:", proxyError);
+            }
+        }
+    }
+
+    if (!response) {
+        throw new Error("Network Error: Could not reach Firebase via any proxy.");
+    }
+
+    if (!response.ok) {
+        const text = await response.text();
+        // Check if the response is the HTML 404 from a proxy
+        if (text.includes("<!DOCTYPE html") || text.includes("Not Found")) {
+            throw new Error("Proxy Error: The proxy service is down or blocked. Please try again later.");
+        }
+        throw new Error(`HTTP ${response.status}: ${text}`);
     }
 
     const data = await response.json();
     
     if (data.failure > 0) {
-       // Firebase accepted the request but failed to deliver to this specific token
        const errorType = data.results?.[0]?.error || "Unknown FCM Error";
        throw new Error(`Firebase Error: ${errorType}`);
     }
@@ -117,13 +154,14 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     
     let userMessage = error.message;
 
-    // Provide friendly error messages for common issues
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        userMessage = "خطأ شبكة/CORS: تعذر الاتصال بـ Firebase حتى عبر البروكسي. تأكد من الإنترنت.";
+        userMessage = "خطأ شبكة: تعذر الاتصال. يرجى التحقق من الإنترنت.";
     } else if (userMessage.includes('InvalidRegistration')) {
         userMessage = "الرمز (Token) غير صالح أو منتهي الصلاحية.";
     } else if (userMessage.includes('Unauthorized') || userMessage.includes('401')) {
         userMessage = "مفتاح الخادم (Server Key) غير صحيح.";
+    } else if (userMessage.includes('Proxy Error')) {
+        userMessage = "خدمة الوسيط (Proxy) مشغولة حالياً. يرجى المحاولة مرة أخرى.";
     }
 
     return {

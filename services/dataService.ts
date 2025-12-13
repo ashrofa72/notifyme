@@ -114,14 +114,20 @@ export const fetchStudentsFromGoogleSheet = async (): Promise<Student[]> => {
     });
 
     if (!response.ok) {
+       if (response.status === 404) {
+           throw new Error("Google Sheet not found (404). Please check the SHEET_ID.");
+       }
        throw new Error(`Failed to fetch data (Status: ${response.status}).`);
     }
 
     const contentType = response.headers.get("content-type");
     const textData = await response.text();
 
-    // Check if we got an HTML login page instead of data (common error if sheet is not published)
+    // Check if we got an HTML login page or Error page instead of data
     if (textData.trim().toLowerCase().startsWith('<!doctype html') || textData.includes('<html')) {
+        if (textData.includes("Not Found") || textData.includes("404")) {
+             throw new Error("Google Sheet URL is incorrect or the sheet is deleted.");
+        }
         throw new Error("Google Sheet returned HTML. Please ensure the Sheet is 'Published to the web' (File -> Share -> Publish to web) and accessible to anyone with the link.");
     }
 
