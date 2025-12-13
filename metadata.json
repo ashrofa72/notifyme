@@ -1,0 +1,5 @@
+{
+  "name": "NotifyEd - Parent Notification System",
+  "description": "A comprehensive dashboard for school administrators to manage student attendance and send instant Firebase Cloud Messaging (FCM) notifications to parents regarding absences and delays.",
+  "requestFramePermissions": []
+}

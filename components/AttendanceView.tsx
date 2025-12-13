@@ -1,0 +1,343 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { Student, ClassOption, AttendanceStatus, NotificationLog } from '../types';
+import { sendFCMNotification } from '../services/fcmService';
+import { Filter, Send, RotateCcw, Check, AlertCircle, Clock, Loader2, ArrowRight } from 'lucide-react';
+
+interface AttendanceViewProps {
+  students: Student[];
+  onUpdateStudentStatus: (studentCode: string, status: AttendanceStatus) => void;
+  onNotificationsSent: (logs: NotificationLog[]) => void;
+  onMarkNotificationSent: (studentCode: string) => void;
+  onFetchClassData?: (grade: string, className: string) => Promise<void>;
+  classes: ClassOption[];
+}
+
+export const AttendanceView: React.FC<AttendanceViewProps> = ({
+  students,
+  onUpdateStudentStatus,
+  onNotificationsSent,
+  onMarkNotificationSent,
+  onFetchClassData,
+  classes
+}) => {
+  const [selectedGrade, setSelectedGrade] = useState<string>('');
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [isSending, setIsSending] = useState(false);
+  const [isFetchingData, setIsFetchingData] = useState(false);
+
+  // Trigger fetch when class 1-1 is selected (Auto-sync hook)
+  useEffect(() => {
+    const loadData = async () => {
+      if (selectedGrade === '1' && selectedClass === '1' && onFetchClassData) {
+        setIsFetchingData(true);
+        try {
+            await onFetchClassData(selectedGrade, selectedClass);
+        } finally {
+            setIsFetchingData(false);
+        }
+      }
+    };
+    loadData();
+  }, [selectedGrade, selectedClass, onFetchClassData]);
+
+  // Dynamically calculate available classes based on Loaded Students + Mock Config
+  const availableClasses = useMemo<ClassOption[]>(() => {
+    const fromStudents = students.map(s => ({ grade: s.grade, className: s.className }));
+    const all = [...classes, ...fromStudents];
+    
+    const uniqueMap = new Map<string, ClassOption>();
+    all.forEach(c => {
+        const key = `${c.grade}-${c.className}`;
+        if (!uniqueMap.has(key)) uniqueMap.set(key, c);
+    });
+    return Array.from(uniqueMap.values());
+  }, [students, classes]);
+
+  const grades = useMemo(() => {
+      return (Array.from(new Set(availableClasses.map(c => c.grade))) as string[]).sort((a, b) => {
+        const numA = parseInt(a);
+        const numB = parseInt(b);
+        if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+        return a.localeCompare(b);
+      });
+  }, [availableClasses]);
+
+  const classOptions = useMemo(() => {
+      return availableClasses
+        .filter(c => c.grade === selectedGrade)
+        .sort((a, b) => {
+            const numA = parseInt(a.className);
+            const numB = parseInt(b.className);
+            if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+            return a.className.localeCompare(b.className);
+        });
+  }, [availableClasses, selectedGrade]);
+
+  // Filter Logic
+  const filteredStudents = useMemo(() => {
+    if (!selectedGrade || !selectedClass) return [];
+    return students.filter(
+      (s) => s.grade === selectedGrade && s.className === selectedClass
+    );
+  }, [students, selectedGrade, selectedClass]);
+
+  // Detect if there are students available in OTHER classes when the current one is empty
+  // This helps when user fetches data for "1-1" but the sheet actually returned "10-1"
+  const alternativeClass = useMemo(() => {
+    if (filteredStudents.length === 0 && students.length > 0) {
+        // Find the class with the most students to suggest
+        const counts = new Map<string, number>();
+        students.forEach(s => {
+            const k = `${s.grade}|${s.className}`;
+            counts.set(k, (counts.get(k) || 0) + 1);
+        });
+        
+        let bestKey = '';
+        let maxCount = 0;
+        counts.forEach((v, k) => {
+            if (v > maxCount) {
+                maxCount = v;
+                bestKey = k;
+            }
+        });
+
+        if (bestKey) {
+            const [g, c] = bestKey.split('|');
+            // Only suggest if it's different from current
+            if (g !== selectedGrade || c !== selectedClass) {
+                return { grade: g, className: c, count: maxCount };
+            }
+        }
+    }
+    return null;
+  }, [filteredStudents, students, selectedGrade, selectedClass]);
+
+  const pendingNotifications = filteredStudents.filter(
+    s => s.status !== 'Present' && !s.notificationSent
+  ).length;
+
+  const handleBulkSend = async () => {
+    const studentsToNotify = filteredStudents.filter(
+      (s) => s.status !== 'Present' && !s.notificationSent
+    );
+
+    if (studentsToNotify.length === 0) return;
+
+    setIsSending(true);
+    const newLogs: NotificationLog[] = [];
+
+    for (const student of studentsToNotify) {
+      const log = await sendFCMNotification(student);
+      newLogs.push(log);
+      if (log.status === 'Sent') {
+        onMarkNotificationSent(student.studentCode);
+      }
+    }
+
+    onNotificationsSent(newLogs);
+    setIsSending(false);
+    
+    alert(`Successfully sent ${newLogs.filter(l => l.status === 'Sent').length} notifications.`);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header & Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Mark Attendance</h2>
+          <p className="text-sm text-gray-500">Select a class to manage daily attendance.</p>
+        </div>
+
+        <div className="flex items-center space-x-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+          <Filter className="w-4 h-4 text-gray-400 ml-2" />
+          <select
+            className="bg-transparent border-none text-sm font-medium focus:ring-0 text-gray-700 outline-none"
+            value={selectedGrade}
+            onChange={(e) => {
+              setSelectedGrade(e.target.value);
+              setSelectedClass(''); // Reset class when grade changes
+            }}
+          >
+            <option value="">Select Grade</option>
+            {grades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+          </select>
+          
+          <div className="h-6 w-px bg-gray-200"></div>
+
+          <select
+            className="bg-transparent border-none text-sm font-medium focus:ring-0 text-gray-700 outline-none disabled:opacity-50"
+            value={selectedClass}
+            onChange={(e) => setSelectedClass(e.target.value)}
+            disabled={!selectedGrade}
+          >
+            <option value="">Select Class</option>
+            {classOptions.map(c => (
+              <option key={c.className} value={c.className}>{c.className}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+        {!selectedGrade || !selectedClass ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+            <UsersPlaceholder />
+            <p className="mt-4 font-medium">Please select a grade and class to begin</p>
+          </div>
+        ) : (
+          <>
+            {/* Toolbar */}
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <div className="flex items-center space-x-2">
+                <div className="text-sm text-gray-600 font-medium">
+                  Showing {filteredStudents.length} students
+                </div>
+                {isFetchingData && (
+                  <div className="flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    Syncing with Sheets...
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleBulkSend}
+                disabled={pendingNotifications === 0 || isSending}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all shadow-sm
+                  ${pendingNotifications > 0 
+                    ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+              >
+                {isSending ? (
+                  <RotateCcw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                <span>Send {pendingNotifications > 0 ? `(${pendingNotifications})` : ''} Notifications</span>
+              </button>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white text-xs uppercase text-gray-500 font-semibold tracking-wider border-b border-gray-100">
+                    <th className="px-6 py-4">Student ID</th>
+                    <th className="px-6 py-4">Student Name</th>
+                    <th className="px-6 py-4">Parent Info</th>
+                    <th className="px-6 py-4 text-center">Attendance Status</th>
+                    <th className="px-6 py-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredStudents.length === 0 && !isFetchingData ? (
+                      <tr>
+                          <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
+                             <div className="flex flex-col items-center gap-2">
+                                <span>No students found for Grade {selectedGrade} - Class {selectedClass}.</span>
+                                
+                                {alternativeClass && (
+                                    <button 
+                                        onClick={() => {
+                                            setSelectedGrade(alternativeClass.grade);
+                                            setSelectedClass(alternativeClass.className);
+                                        }}
+                                        className="mt-2 flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition"
+                                    >
+                                        <ArrowRight className="w-4 h-4" />
+                                        <span>Found {alternativeClass.count} students in Grade {alternativeClass.grade} - Class {alternativeClass.className}. View them?</span>
+                                    </button>
+                                )}
+                             </div>
+                          </td>
+                      </tr>
+                  ) : filteredStudents.map((student) => (
+                    <tr key={student.studentCode} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-sm font-mono text-gray-500">
+                        {student.studentCode}
+                      </td>
+                      <td className="px-6 py-4 font-medium text-gray-900">
+                        {student.studentName}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        <div>{student.parentName}</div>
+                        <div className="text-xs text-gray-400">{student.parentPhone}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-center space-x-1 bg-gray-100 p-1 rounded-lg w-max mx-auto">
+                          <StatusButton 
+                            current={student.status} 
+                            target="Present" 
+                            icon={Check}
+                            label="Present"
+                            color="text-green-600 bg-green-50"
+                            onClick={() => onUpdateStudentStatus(student.studentCode, 'Present')} 
+                          />
+                          <StatusButton 
+                            current={student.status} 
+                            target="Late" 
+                            icon={Clock}
+                            label="Late"
+                            color="text-yellow-600 bg-yellow-50"
+                            onClick={() => onUpdateStudentStatus(student.studentCode, 'Late')} 
+                          />
+                          <StatusButton 
+                            current={student.status} 
+                            target="Absent" 
+                            icon={AlertCircle}
+                            label="Absent"
+                            color="text-red-600 bg-red-50"
+                            onClick={() => onUpdateStudentStatus(student.studentCode, 'Absent')} 
+                          />
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {student.notificationSent ? (
+                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">Sent</span>
+                        ) : student.status !== 'Present' ? (
+                           <span className="text-xs font-medium text-orange-500 bg-orange-50 px-2 py-1 rounded">Pending Send</span>
+                        ) : (
+                          <span className="text-gray-300">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const StatusButton: React.FC<{
+  current: string;
+  target: string;
+  icon: React.FC<any>;
+  label: string;
+  color: string;
+  onClick: () => void;
+}> = ({ current, target, icon: Icon, label, color, onClick }) => {
+  const isActive = current === target;
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className={`p-1.5 rounded-md transition-all duration-200 ${
+        isActive ? `${color} shadow-sm` : 'text-gray-400 hover:text-gray-600'
+      }`}
+    >
+      <Icon className="w-5 h-5" />
+    </button>
+  );
+};
+
+const UsersPlaceholder = () => (
+  <svg className="w-16 h-16 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+);
