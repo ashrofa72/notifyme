@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, AlertTriangle, Settings, CheckCircle, XCircle } from 'lucide-react';
+import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, AlertTriangle, Settings, CheckCircle, XCircle, ExternalLink } from 'lucide-react';
 import { getStoredServerKey, setStoredServerKey } from '../services/fcmService';
 import { seedDatabase, syncSheetToFirestore } from '../services/dataService';
 import { firebaseConfig } from '../services/firebase';
@@ -16,6 +16,10 @@ export const SettingsView: React.FC = () => {
   // Validation Logic
   const isValidFormat = serverKey === '' || serverKey.startsWith('AIza');
   const isClientKey = serverKey === firebaseConfig.apiKey;
+
+  // Direct link to enable Legacy API for this specific project
+  const enableApiUrl = `https://console.cloud.google.com/apis/library/googlecloudmessaging.googleapis.com?project=${firebaseConfig.projectId}`;
+  const firebaseSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/settings/cloudmessaging`;
 
   const handleSaveKey = () => {
     if (serverKey && !serverKey.startsWith('AIza')) {
@@ -77,26 +81,45 @@ export const SettingsView: React.FC = () => {
           </h3>
           
           <div className="mt-3 mb-4 bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-sm text-yellow-800">
-             <h4 className="font-bold flex items-center gap-1 mb-1">
+             <h4 className="font-bold flex items-center gap-1 mb-2">
                  <AlertTriangle className="w-4 h-4" />
                  هام جداً:
              </h4>
-             <p className="mb-2">
-                 لا تستخدم التبويب "Messaging" في القائمة الجانبية. يجب تفعيل API القديم من الإعدادات:
+             <p className="mb-3">
+                 المفتاح الذي وجدته (Service Account JSON) <strong>ليس هو المطلوب</strong> هنا. نحن نحتاج "Legacy Server Key".
+                 <br/>
+                 اتبع الخطوات التالية للحصول عليه بسهولة:
              </p>
-             <ol className="list-decimal list-inside space-y-2 text-yellow-900 font-medium">
-                 <li>
-                    اضغط على <strong>أيقونة الترس ⚙️</strong> بجوار "Project Overview" (أعلى اليسار) واختر <strong>Project settings</strong>.
-                 </li>
-                 <li>اختر تبويب <strong>Cloud Messaging</strong> من الشريط العلوي.</li>
-                 <li>
-                    ابحث عن قسم <strong>Cloud Messaging API (Legacy)</strong>.
-                    <ul className="list-disc list-inside mr-5 mt-1 text-yellow-700 font-normal">
-                        <li>إذا كان "Disabled"، اضغط على النقاط الثلاث (⋮) ثم <strong>Manage API in Google Cloud Console</strong> واضغط <strong>Enable</strong>.</li>
-                    </ul>
-                 </li>
-                 <li>بعد التفعيل، انسخ <strong>Server key</strong> (يبدأ بـ <code>AIza...</code>) وضعه في الحقل أدناه.</li>
-             </ol>
+             
+             <div className="space-y-3 bg-white/50 p-3 rounded border border-yellow-100">
+                 <div className="flex items-center gap-2">
+                     <span className="bg-yellow-200 text-yellow-800 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs">1</span>
+                     <p>اضغط الزر أدناه لتفعيل <strong>Cloud Messaging API (Legacy)</strong> في مشروعك:</p>
+                 </div>
+                 <a 
+                    href={enableApiUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 py-2 rounded font-medium transition"
+                 >
+                    <ExternalLink className="w-4 h-4" />
+                    تفعيل الـ API (Google Cloud Console)
+                 </a>
+                 
+                 <div className="flex items-center gap-2 mt-2">
+                     <span className="bg-yellow-200 text-yellow-800 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs">2</span>
+                     <p>بعد التفعيل، اذهب إلى إعدادات Firebase وانسخ الـ <strong>Server Key</strong>:</p>
+                 </div>
+                 <a 
+                    href={firebaseSettingsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-medium transition"
+                 >
+                    <Settings className="w-4 h-4" />
+                    الذهاب إلى Firebase Console (Cloud Messaging)
+                 </a>
+             </div>
           </div>
           
           <div className="flex flex-col gap-2">
@@ -106,7 +129,7 @@ export const SettingsView: React.FC = () => {
                     type="password" 
                     value={serverKey}
                     onChange={(e) => setServerKey(e.target.value.trim())}
-                    placeholder="Legacy Server Key (Starts with AIza...)"
+                    placeholder="ضع Server Key هنا (يبدأ بـ AIza...)"
                     className={`w-full p-2 border rounded-lg focus:ring-2 outline-none text-left pl-10 ${
                         !isValidFormat || isClientKey ? 'border-red-300 focus:ring-red-500 bg-red-50' : 'border-gray-300 focus:ring-blue-500'
                     }`}
