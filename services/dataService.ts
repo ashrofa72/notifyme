@@ -39,12 +39,16 @@ export const subscribeToStudents = (onData: (students: Student[]) => void): (() 
 export const updateStudentStatusInDb = async (studentCode: string, status: AttendanceStatus): Promise<void> => {
   try {
     const studentRef = doc(db, STUDENTS_COLLECTION, studentCode);
-    // We only update the status, preventing overwrite of tokens
-    await updateDoc(studentRef, { 
-        status: status,
-        // If status is changed back to Present, reset the notification flag so we can send again if needed later
-        notificationSent: status === 'Present' ? false : undefined 
-    });
+    
+    // Create update object dynamically to avoid sending 'undefined' which crashes Firestore
+    const updates: Record<string, any> = { status };
+    
+    // If status is changed back to Present, reset the notification flag
+    if (status === 'Present') {
+        updates.notificationSent = false;
+    }
+    
+    await updateDoc(studentRef, updates);
   } catch (error) {
     console.error(`Failed to update status for ${studentCode}:`, error);
     throw error;

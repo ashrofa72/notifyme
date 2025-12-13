@@ -74,8 +74,10 @@ const App: React.FC = () => {
     // We update Firestore, and the `subscribeToStudents` listener will update the UI automatically.
     try {
         await updateStudentStatusInDb(studentCode, status);
-    } catch (error) {
-        alert("فشل تحديث الحالة. يرجى التحقق من الاتصال.");
+    } catch (error: any) {
+        console.error("Update status failed:", error);
+        // Display specific error message if available
+        alert(`فشل تحديث الحالة: ${error.message || "يرجى التحقق من الاتصال."}`);
     }
   }, []);
 
