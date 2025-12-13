@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import * as firebaseApp from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
@@ -12,6 +12,8 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase using Modular SDK
-const app = initializeApp(firebaseConfig);
+// Using type casting to avoid "Module has no exported member 'initializeApp'" error
+// which can occur if strict type checking or conflicting types (@types/firebase) are present.
+const app = (firebaseApp as any).initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
