@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, ClassOption, AttendanceStatus, NotificationLog } from '../types';
 import { sendFCMNotification } from '../services/fcmService';
-import { Filter, Send, RotateCcw, Check, AlertCircle, Clock, Loader2, ArrowRight } from 'lucide-react';
+import { Filter, Send, RotateCcw, Check, AlertCircle, Clock, Loader2, ArrowLeft } from 'lucide-react';
 
 interface AttendanceViewProps {
   students: Student[];
@@ -82,7 +82,6 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   }, [students, selectedGrade, selectedClass]);
 
   // Detect if there are students available in OTHER classes when the current one is empty
-  // This helps when user fetches data for "1-1" but the sheet actually returned "10-1"
   const alternativeClass = useMemo(() => {
     if (filteredStudents.length === 0 && students.length > 0) {
         // Find the class with the most students to suggest
@@ -137,7 +136,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     onNotificationsSent(newLogs);
     setIsSending(false);
     
-    alert(`Successfully sent ${newLogs.filter(l => l.status === 'Sent').length} notifications.`);
+    alert(`تم إرسال ${newLogs.filter(l => l.status === 'Sent').length} إشعار بنجاح.`);
   };
 
   return (
@@ -145,12 +144,12 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
       {/* Header & Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Mark Attendance</h2>
-          <p className="text-sm text-gray-500">Select a class to manage daily attendance.</p>
+          <h2 className="text-2xl font-bold text-gray-800">تسجيل الحضور</h2>
+          <p className="text-sm text-gray-500">اختر الصف والفصل لإدارة الحضور اليومي.</p>
         </div>
 
-        <div className="flex items-center space-x-3 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-          <Filter className="w-4 h-4 text-gray-400 ml-2" />
+        <div className="flex items-center space-x-3 rtl:space-x-reverse bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+          <Filter className="w-4 h-4 text-gray-400 ml-2 rtl:ml-0 rtl:mr-2" />
           <select
             className="bg-transparent border-none text-sm font-medium focus:ring-0 text-gray-700 outline-none"
             value={selectedGrade}
@@ -159,8 +158,8 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
               setSelectedClass(''); // Reset class when grade changes
             }}
           >
-            <option value="">Select Grade</option>
-            {grades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+            <option value="">اختر الصف</option>
+            {grades.map(g => <option key={g} value={g}>الصف {g}</option>)}
           </select>
           
           <div className="h-6 w-px bg-gray-200"></div>
@@ -171,7 +170,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
             onChange={(e) => setSelectedClass(e.target.value)}
             disabled={!selectedGrade}
           >
-            <option value="">Select Class</option>
+            <option value="">اختر الفصل</option>
             {classOptions.map(c => (
               <option key={c.className} value={c.className}>{c.className}</option>
             ))}
@@ -184,27 +183,27 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
         {!selectedGrade || !selectedClass ? (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
             <UsersPlaceholder />
-            <p className="mt-4 font-medium">Please select a grade and class to begin</p>
+            <p className="mt-4 font-medium">الرجاء اختيار الصف والفصل للبدء</p>
           </div>
         ) : (
           <>
             {/* Toolbar */}
             <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2">
                 <div className="text-sm text-gray-600 font-medium">
-                  Showing {filteredStudents.length} students
+                  عرض {filteredStudents.length} طالب
                 </div>
                 {isFetchingData && (
                   <div className="flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                    Syncing with Sheets...
+                    <Loader2 className="w-3 h-3 animate-spin ml-1" />
+                    جاري المزامنة...
                   </div>
                 )}
               </div>
               <button
                 onClick={handleBulkSend}
                 disabled={pendingNotifications === 0 || isSending}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all shadow-sm
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all shadow-sm
                   ${pendingNotifications > 0 
                     ? 'bg-blue-600 text-white hover:bg-blue-700' 
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -213,22 +212,22 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                 {isSending ? (
                   <RotateCcw className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Send className="w-4 h-4" />
+                  <Send className="w-4 h-4 rtl:rotate-180" />
                 )}
-                <span>Send {pendingNotifications > 0 ? `(${pendingNotifications})` : ''} Notifications</span>
+                <span>إرسال {pendingNotifications > 0 ? `(${pendingNotifications})` : ''} إشعار</span>
               </button>
             </div>
 
             {/* Table */}
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-right border-collapse">
                 <thead>
                   <tr className="bg-white text-xs uppercase text-gray-500 font-semibold tracking-wider border-b border-gray-100">
-                    <th className="px-6 py-4">Student ID</th>
-                    <th className="px-6 py-4">Student Name</th>
-                    <th className="px-6 py-4">Parent Info</th>
-                    <th className="px-6 py-4 text-center">Attendance Status</th>
-                    <th className="px-6 py-4 text-center">Action</th>
+                    <th className="px-6 py-4 text-right">رقم الطالب</th>
+                    <th className="px-6 py-4 text-right">اسم الطالب</th>
+                    <th className="px-6 py-4 text-right">معلومات الولي</th>
+                    <th className="px-6 py-4 text-center">حالة الحضور</th>
+                    <th className="px-6 py-4 text-center">الحالة</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -236,7 +235,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                       <tr>
                           <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
                              <div className="flex flex-col items-center gap-2">
-                                <span>No students found for Grade {selectedGrade} - Class {selectedClass}.</span>
+                                <span>لا يوجد طلاب في الصف {selectedGrade} - الفصل {selectedClass}.</span>
                                 
                                 {alternativeClass && (
                                     <button 
@@ -244,10 +243,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                                             setSelectedGrade(alternativeClass.grade);
                                             setSelectedClass(alternativeClass.className);
                                         }}
-                                        className="mt-2 flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition"
+                                        className="mt-2 flex items-center space-x-2 rtl:space-x-reverse bg-blue-50 text-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-100 transition"
                                     >
-                                        <ArrowRight className="w-4 h-4" />
-                                        <span>Found {alternativeClass.count} students in Grade {alternativeClass.grade} - Class {alternativeClass.className}. View them?</span>
+                                        <ArrowLeft className="w-4 h-4" />
+                                        <span>وجدنا {alternativeClass.count} طالب في الصف {alternativeClass.grade} - الفصل {alternativeClass.className}. عرضهم؟</span>
                                     </button>
                                 )}
                              </div>
@@ -263,15 +262,15 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
                         <div>{student.parentName}</div>
-                        <div className="text-xs text-gray-400">{student.parentPhone}</div>
+                        <div className="text-xs text-gray-400 text-left dir-ltr">{student.parentPhone}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-center space-x-1 bg-gray-100 p-1 rounded-lg w-max mx-auto">
+                        <div className="flex items-center justify-center space-x-1 rtl:space-x-reverse bg-gray-100 p-1 rounded-lg w-max mx-auto">
                           <StatusButton 
                             current={student.status} 
                             target="Present" 
                             icon={Check}
-                            label="Present"
+                            label="حاضر"
                             color="text-green-600 bg-green-50"
                             onClick={() => onUpdateStudentStatus(student.studentCode, 'Present')} 
                           />
@@ -279,7 +278,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                             current={student.status} 
                             target="Late" 
                             icon={Clock}
-                            label="Late"
+                            label="متأخر"
                             color="text-yellow-600 bg-yellow-50"
                             onClick={() => onUpdateStudentStatus(student.studentCode, 'Late')} 
                           />
@@ -287,7 +286,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                             current={student.status} 
                             target="Absent" 
                             icon={AlertCircle}
-                            label="Absent"
+                            label="غائب"
                             color="text-red-600 bg-red-50"
                             onClick={() => onUpdateStudentStatus(student.studentCode, 'Absent')} 
                           />
@@ -295,9 +294,9 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                       </td>
                       <td className="px-6 py-4 text-center">
                         {student.notificationSent ? (
-                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">Sent</span>
+                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">تم الإرسال</span>
                         ) : student.status !== 'Present' ? (
-                           <span className="text-xs font-medium text-orange-500 bg-orange-50 px-2 py-1 rounded">Pending Send</span>
+                           <span className="text-xs font-medium text-orange-500 bg-orange-50 px-2 py-1 rounded">قيد الانتظار</span>
                         ) : (
                           <span className="text-gray-300">-</span>
                         )}

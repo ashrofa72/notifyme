@@ -30,11 +30,11 @@ export const AuthPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      let msg = "An error occurred.";
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') msg = "Invalid email or password.";
-      if (err.code === 'auth/email-already-in-use') msg = "Email is already registered.";
-      if (err.code === 'auth/weak-password') msg = "Password should be at least 6 characters.";
-      if (err.code === 'auth/invalid-email') msg = "Invalid email address.";
+      let msg = "حدث خطأ ما.";
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') msg = "البريد الإلكتروني أو كلمة المرور غير صحيحة.";
+      if (err.code === 'auth/email-already-in-use') msg = "البريد الإلكتروني مسجل بالفعل.";
+      if (err.code === 'auth/weak-password') msg = "كلمة المرور يجب أن تكون 6 أحرف على الأقل.";
+      if (err.code === 'auth/invalid-email') msg = "عنوان البريد الإلكتروني غير صالح.";
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -54,12 +54,12 @@ export const AuthPage: React.FC = () => {
       <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
         <div className="bg-blue-600 p-8 text-center">
           <h1 className="text-3xl font-bold text-white mb-2">NotifyEd</h1>
-          <p className="text-blue-100">School Attendance & Notification System</p>
+          <p className="text-blue-100">نظام الحضور والإشعارات المدرسي</p>
         </div>
 
         <div className="p-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-6 text-center">
-            {isLogin ? 'Welcome Back' : 'Create Account'}
+            {isLogin ? 'مرحبًا بعودتك' : 'إنشاء حساب جديد'}
           </h2>
 
           {error && (
@@ -73,47 +73,53 @@ export const AuthPage: React.FC = () => {
             
             {!isLogin && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">الاسم الكامل</label>
                 <div className="relative">
-                  <User className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  {/* Changed absolute left-3 to right-3 for RTL */}
+                  <User className="w-5 h-5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  {/* Changed pl-10 to pr-10 for RTL */}
                   <input
                     type="text"
                     required={!isLogin}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    placeholder="John Doe"
+                    className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    placeholder="الاسم الكامل"
                   />
                 </div>
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني</label>
               <div className="relative">
-                <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Mail className="w-5 h-5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                   placeholder="admin@school.edu"
+                  dir="ltr" 
+                  style={{ textAlign: 'right' }} 
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">كلمة المرور</label>
               <div className="relative">
-                <Lock className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Lock className="w-5 h-5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                   placeholder="••••••••"
+                  dir="ltr"
+                  style={{ textAlign: 'right' }}
                 />
               </div>
             </div>
@@ -126,18 +132,18 @@ export const AuthPage: React.FC = () => {
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                isLogin ? 'Sign In' : 'Sign Up'
+                isLogin ? 'تسجيل الدخول' : 'إنشاء حساب'
               )}
             </button>
           </form>
 
           <div className="mt-6 text-center text-sm text-gray-600">
-            {isLogin ? "Don't have an account? " : "Already have an account? "}
+            {isLogin ? "ليس لديك حساب؟ " : "لديك حساب بالفعل؟ "}
             <button
               onClick={toggleMode}
               className="text-blue-600 font-semibold hover:underline"
             >
-              {isLogin ? 'Sign Up' : 'Log In'}
+              {isLogin ? 'سجل الآن' : 'سجل دخولك'}
             </button>
           </div>
         </div>

@@ -12,10 +12,10 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userEmail, userName, onLogout }) => {
   const navItems = [
-    { view: ViewState.DASHBOARD, label: 'Dashboard', icon: LayoutDashboard },
-    { view: ViewState.ATTENDANCE, label: 'Attendance', icon: Users },
-    { view: ViewState.HISTORY, label: 'History', icon: History },
-    { view: ViewState.SETTINGS, label: 'Settings', icon: Settings },
+    { view: ViewState.DASHBOARD, label: 'لوحة التحكم', icon: LayoutDashboard },
+    { view: ViewState.ATTENDANCE, label: 'الحضور', icon: Users },
+    { view: ViewState.HISTORY, label: 'السجل', icon: History },
+    { view: ViewState.SETTINGS, label: 'الإعدادات', icon: Settings },
   ];
 
   // Helper to generate initials
@@ -39,14 +39,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userE
   };
 
   return (
-    <div className="w-64 bg-white h-screen border-r border-gray-200 flex flex-col fixed left-0 top-0 z-10">
-      <div className="p-6 flex items-center space-x-3 border-b border-gray-100">
+    // Changed right-0 for RTL fixed positioning, border-l instead of border-r
+    <div className="w-64 bg-white h-screen border-l border-gray-200 flex flex-col fixed right-0 top-0 z-10">
+      <div className="p-6 flex items-center space-x-3 rtl:space-x-reverse border-b border-gray-100">
         <div className="bg-blue-600 p-2 rounded-lg">
             <BellRing className="w-6 h-6 text-white" />
         </div>
         <div>
           <h1 className="text-xl font-bold text-gray-800">NotifyEd</h1>
-          <p className="text-xs text-gray-500">Parent Alerts</p>
+          <p className="text-xs text-gray-500">تنبيهات أولياء الأمور</p>
         </div>
       </div>
 
@@ -57,7 +58,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userE
             <button
               key={item.view}
               onClick={() => onNavigate(item.view)}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
+              // Used gap-3 instead of space-x for better RTL support
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
                 isActive
                   ? 'bg-blue-50 text-blue-600 font-medium'
                   : 'text-gray-600 hover:bg-gray-50'
@@ -72,11 +74,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userE
 
       <div className="p-4 border-t border-gray-100">
         <div className="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-lg">
-          <div className="flex items-center space-x-3 overflow-hidden">
+          <div className="flex items-center gap-3 overflow-hidden">
             <div className="w-8 h-8 flex-shrink-0 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs uppercase">
               {getInitials()}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 text-right">
               <p className="text-sm font-medium text-gray-700 truncate max-w-[100px]" title={getDisplayName()}>
                 {getDisplayName()}
               </p>
@@ -87,10 +89,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, userE
           </div>
           <button 
             onClick={onLogout}
-            title="Sign Out"
+            title="تسجيل الخروج"
             className="text-gray-400 hover:text-red-600 transition-colors"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-4 h-4 transform rtl:rotate-180" />
           </button>
         </div>
       </div>

@@ -99,14 +99,14 @@ const App: React.FC = () => {
          }
        } catch (e) {
          console.warn("Failed to fetch Google Sheet data. Ensure sheet is published to web.");
-         alert("Could not load Google Sheet data. Please ensure the Sheet is 'Published to the web' (File -> Share -> Publish to web).");
+         alert("تعذر تحميل البيانات من Google Sheet. يرجى التأكد من نشر الورقة (File -> Share -> Publish to web).");
        }
     }
   }, []);
 
   const renderContent = () => {
     if (isDataLoading && currentView !== ViewState.SETTINGS) {
-       return <div className="flex h-full items-center justify-center text-gray-400">Loading data...</div>;
+       return <div className="flex h-full items-center justify-center text-gray-400">جاري تحميل البيانات...</div>;
     }
 
     switch (currentView) {
@@ -153,11 +153,12 @@ const App: React.FC = () => {
         userName={user.displayName}
         onLogout={handleLogout}
       />
-      <main className="flex-1 ml-64 p-8 overflow-y-auto h-screen">
+      {/* Changed ml-64 to mr-64 for RTL sidebar */}
+      <main className="flex-1 mr-64 p-8 overflow-y-auto h-screen">
         <div className="max-w-7xl mx-auto">
            {students.length === 0 && !isDataLoading && currentView === ViewState.ATTENDANCE && (
              <div className="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg text-sm">
-               No students found in database. Select <strong>Grade 1 - Class 1</strong> to fetch from Sheets or go to <strong>Settings</strong> to seed mock data.
+               لا يوجد طلاب في قاعدة البيانات. اختر <strong>الصف 1 - الفصل 1</strong> للجلب من Sheets أو اذهب إلى <strong>الإعدادات</strong> لإضافة بيانات تجريبية.
              </div>
            )}
            {renderContent()}
