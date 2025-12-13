@@ -96,12 +96,9 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
 
       if (permission === 'granted') {
         // 3. Get Token
-        // NOTE: We removed the hardcoded 'vapidKey'. If your project requires one, 
-        // generate it in Firebase Console -> Project Settings -> Cloud Messaging -> Web Push certificates
-        // and add it back as: vapidKey: 'YOUR_KEY_HERE'
-        // Removing it usually allows Firebase to use the default project config.
         const token = await getToken(messaging, {
-            serviceWorkerRegistration: swRegistration
+            serviceWorkerRegistration: swRegistration,
+            vapidKey: 'BCVMV9GCRP4Rko9UVBjrSX_nCGy3f68ZgbL2AKFnPyrpbgepVdHZoXfp6SgSlC31mHec0LYF1Y3o4NX2j4rAX_Y'
         });
         
         if (token) {
