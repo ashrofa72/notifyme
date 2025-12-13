@@ -136,7 +136,15 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     onNotificationsSent(newLogs);
     setIsSending(false);
     
-    alert(`تم إرسال ${newLogs.filter(l => l.status === 'Sent').length} إشعار بنجاح.`);
+    const successCount = newLogs.filter(l => l.status === 'Sent').length;
+    const failCount = newLogs.length - successCount;
+    
+    let message = `تم إرسال ${successCount} إشعار بنجاح.`;
+    if (failCount > 0) {
+        message += `\nفشل إرسال ${failCount} إشعار. (تأكد من أن أولياء الأمور قاموا بربط الأجهزة عبر بوابة ولي الأمر).`;
+    }
+    
+    alert(message);
   };
 
   return (

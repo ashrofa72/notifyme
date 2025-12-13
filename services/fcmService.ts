@@ -24,7 +24,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
       type: student.status === 'Absent' ? 'Absent' : 'Late',
       timestamp: timestamp,
       status: 'Failed',
-      message: `فشل: لا يوجد رمز (Token) صالح لهذا الطالب.`,
+      message: `فشل: لم يتم ربط جهاز ولي الأمر (لا يوجد Token).`,
     };
   }
 

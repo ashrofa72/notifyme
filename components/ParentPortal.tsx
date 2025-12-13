@@ -60,10 +60,23 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
   };
 
   const requestNotificationPermission = async (code: string) => {
+    // Check if running in an iframe (common in cloud IDE previews)
+    const isIframe = window.self !== window.top;
+    
     try {
+      let swRegistration = undefined;
+
       // 1. Register Service Worker (Required for background notifications)
       if ('serviceWorker' in navigator) {
-        await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        try {
+           // FIX: Construct absolute URL using window.location.origin
+           // This prevents the "origin mismatch" error when running in Cloud IDE previews
+           const swUrl = new URL('/firebase-messaging-sw.js', window.location.origin).href;
+           swRegistration = await navigator.serviceWorker.register(swUrl);
+           console.log('Service Worker registered:', swRegistration);
+        } catch (swError) {
+           console.warn('Service Worker registration failed, attempting to proceed without explicit registration:', swError);
+        }
       }
 
       // 2. Request Permission
@@ -73,7 +86,8 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
       if (permission === 'granted') {
         // 3. Get Token
         const token = await getToken(messaging, {
-            vapidKey: 'BOBNbWvVfFjVd2QG_vXn7rG2oO3Xqq9XyZ4Q6Qz8_8k' // Optional: Put your generated VAPID key here if you have one, or remove this line to use default
+            vapidKey: 'BOBNbWvVfFjVd2QG_vXn7rG2oO3Xqq9XyZ4Q6Qz8_8k', // Optional: Put your generated VAPID key here if you have one, or remove this line to use default
+            serviceWorkerRegistration: swRegistration
         });
         
         if (token) {
@@ -82,10 +96,22 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
              fcmToken: token
            });
            console.log('Device linked successfully:', token);
+           alert("تم تفعيل الإشعارات بنجاح!");
         }
+      } else {
+        // If denied, give a specific hint if they are in an iframe
+        setError(isIframe 
+          ? "تم رفض الإذن. (ملاحظة: أنت تستخدم وضع المعاينة، يرجى فتح الموقع في نافذة جديدة Open in New Tab لكي تعمل الإشعارات)." 
+          : "تم رفض الإذن بالإشعارات. يرجى تفعيلها من إعدادات المتصفح.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to enable notifications:', err);
+      // Handle the origin error gracefully
+      if (err.message && (err.message.includes('origin') || err.message.includes('register'))) {
+          setError("خطأ تقني: يرجى فتح الموقع في نافذة جديدة (Open in New Tab) لأن المتصفح يحظر تسجيل Service Worker في وضع المعاينة.");
+      } else {
+          setError(`فشل تفعيل التنبيهات: ${err.message}`);
+      }
     }
   };
 
@@ -129,8 +155,8 @@ export const ParentPortal: React.FC<ParentPortalProps> = ({ onBack }) => {
           <div className="p-6">
             {error && (
                <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center gap-2 rtl:text-right">
-                 <AlertCircle className="w-4 h-4" />
-                 {error}
+                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                 <span>{error}</span>
                </div>
             )}
 

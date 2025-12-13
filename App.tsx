@@ -94,15 +94,26 @@ const App: React.FC = () => {
          
          if (sheetStudents.length > 0) {
             setStudents(prev => {
-                // Remove existing students for this specific class to avoid duplicates
                 const otherStudents = prev.filter(s => !(s.grade === grade && s.className === className));
-                // Add the fresh data
-                return [...otherStudents, ...sheetStudents];
+                
+                // Merge Logic: Preserve FCM Token and Status from existing state
+                const mergedSheetStudents = sheetStudents.map(newS => {
+                   const existing = prev.find(p => p.studentCode === newS.studentCode);
+                   return {
+                      ...newS,
+                      // CRITICAL: Keep existing token if the sheet doesn't have one (which it usually doesn't)
+                      fcmToken: existing?.fcmToken || newS.fcmToken || '', 
+                      status: existing?.status || newS.status, 
+                      notificationSent: existing?.notificationSent || false
+                   };
+                });
+
+                return [...otherStudents, ...mergedSheetStudents];
             });
          }
        } catch (e) {
          console.warn("Failed to fetch Google Sheet data. Ensure sheet is published to web.");
-         alert("تعذر تحميل البيانات من Google Sheet. يرجى التأكد من نشر الورقة (File -> Share -> Publish to web).");
+         // alert("تعذر تحميل البيانات من Google Sheet. يرجى التأكد من نشر الورقة (File -> Share -> Publish to web).");
        }
     }
   }, []);
