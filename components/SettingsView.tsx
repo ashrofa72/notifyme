@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, AlertTriangle } from 'lucide-react';
+import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, AlertTriangle, Settings } from 'lucide-react';
 import { getStoredServerKey, setStoredServerKey } from '../services/fcmService';
 import { seedDatabase, syncSheetToFirestore } from '../services/dataService';
 
@@ -67,13 +67,20 @@ export const SettingsView: React.FC = () => {
                  هام جداً:
              </h4>
              <p className="mb-2">
-                 لا تستخدم "Web API Key" أو "App ID". يجب استخدام <strong>Cloud Messaging API (Legacy)</strong>.
+                 لا تستخدم التبويب "Messaging" في القائمة الجانبية. يجب تفعيل API القديم من الإعدادات:
              </p>
-             <ol className="list-decimal list-inside space-y-1 text-yellow-700">
-                 <li>اذهب إلى Firebase Console {'>'} Project Settings.</li>
-                 <li>اختر تبويب <strong>Cloud Messaging</strong>.</li>
-                 <li>إذا لم تجد "Cloud Messaging API (Legacy)"، اضغط على الثلاث نقاط في الزاوية واختر <strong>Manage API in Google Cloud Console</strong> ثم قم بتفعيلها.</li>
-                 <li>انسخ المفتاح الطويل الذي يبدأ بـ <code>AIza...</code> وضعه هنا.</li>
+             <ol className="list-decimal list-inside space-y-2 text-yellow-900 font-medium">
+                 <li>
+                    اضغط على <strong>أيقونة الترس ⚙️</strong> بجوار "Project Overview" (أعلى اليسار) واختر <strong>Project settings</strong>.
+                 </li>
+                 <li>اختر تبويب <strong>Cloud Messaging</strong> من الشريط العلوي.</li>
+                 <li>
+                    ابحث عن قسم <strong>Cloud Messaging API (Legacy)</strong>.
+                    <ul className="list-disc list-inside mr-5 mt-1 text-yellow-700 font-normal">
+                        <li>إذا كان "Disabled"، اضغط على النقاط الثلاث (⋮) ثم <strong>Manage API in Google Cloud Console</strong> واضغط <strong>Enable</strong>.</li>
+                    </ul>
+                 </li>
+                 <li>بعد التفعيل، انسخ <strong>Server key</strong> (يبدأ بـ <code>AIza...</code>) وضعه في الحقل أدناه.</li>
              </ol>
           </div>
           

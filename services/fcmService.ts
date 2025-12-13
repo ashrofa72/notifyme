@@ -134,7 +134,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     }
 
     if (response.status === 401) {
-        throw new Error("401 Unauthorized: مفتاح الخادم (Legacy Server Key) خطأ.");
+        throw new Error("401 Unauthorized: المفتاح خطأ أو خدمة (Legacy API) غير مفعلة في Cloud Console.");
     }
 
     if (!response.ok) {
