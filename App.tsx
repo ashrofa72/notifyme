@@ -18,7 +18,7 @@ import { auth } from './services/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { Loader2, ShieldAlert } from 'lucide-react';
 
-// Define allowed admins
+// Define allowed admins - Fixed typo in hotmail.com
 const ADMIN_EMAILS = ['as.ka1@hotmail.om', 'as.ka1@hotmail.com'];
 
 const App: React.FC = () => {

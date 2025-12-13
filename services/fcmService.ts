@@ -3,12 +3,14 @@ import { Student, NotificationLog } from '../types';
 export const getStoredServerKey = () => localStorage.getItem('FCM_SERVER_KEY') || '';
 export const setStoredServerKey = (key: string) => localStorage.setItem('FCM_SERVER_KEY', key);
 
-// List of CORS proxies to try in order
+// List of CORS proxies to try in order of reliability
 const PROXY_GENERATORS = [
-    // Primary: thingproxy (Often reliable)
-    (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
-    // Backup: corsproxy.io (Can be spotty)
+    // 1. corsproxy.io - Usually the most stable
     (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    // 2. ThingProxy - Good backup, can be busy
+    (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+    // 3. CodeTabs - Another backup option
+    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
 ];
 
 export const sendFCMNotification = async (student: Student): Promise<NotificationLog> => {
@@ -81,39 +83,52 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
 
   try {
     let response;
+    let lastErrorMsg = "";
     
-    // Attempt 1: Try Proxies Loop
-    console.log("Sending FCM notification via proxy...");
+    console.log("Sending FCM notification via proxies...");
         
     for (const generateProxyUrl of PROXY_GENERATORS) {
         try {
             const proxyUrl = generateProxyUrl(FCM_ENDPOINT);
             response = await performFetch(proxyUrl);
             
-            // If we get a 404 HTML page, treat it as a proxy failure
+            // Handle Proxy-specific failures (HTML responses instead of JSON/API response)
+            // 404 from a proxy often means the proxy service itself is glitching
             if (response.status === 404) {
                 const contentType = response.headers.get("content-type");
                 if (contentType && contentType.includes("html")) {
+                    console.warn(`Proxy ${proxyUrl} returned 404 HTML. Skipping.`);
                     continue; 
                 }
             }
+
+            // 5xx errors (500, 502, 503, 504) are server errors. 
+            // If the proxy returns this, we assume the proxy is down/busy and try the next one.
+            if (response.status >= 500 && response.status < 600) {
+                console.warn(`Proxy ${proxyUrl} failed with status ${response.status}. Trying next...`);
+                continue;
+            }
             
-            // If we get 401, it is NOT a proxy error, it is a Key error. Stop trying other proxies.
+            // If we get 401 Unauthorized, that comes from Firebase itself (invalid key). 
+            // No point trying other proxies.
             if (response.status === 401) {
                 break;
             }
 
-            // If network success (even if 400 bad request), stop loop
+            // If we got a response that isn't a 5xx or broken 404, assume we connected to Firebase
             if (response) {
                 break; 
             }
-        } catch (proxyError) {
-            console.warn("Proxy attempt failed:", proxyError);
+        } catch (proxyError: any) {
+            console.warn("Proxy connection attempt failed:", proxyError);
+            lastErrorMsg = proxyError.message;
+            // Wait slightly before next try
+            await new Promise(r => setTimeout(r, 500));
         }
     }
 
     if (!response) {
-        throw new Error("Proxy Error: تعذر الاتصال بخادم Firebase عبر الوسيط.");
+        throw new Error(`تعذر الاتصال بخادم Firebase عبر جميع الوسطاء المتاحين. (${lastErrorMsg})`);
     }
 
     if (response.status === 401) {
@@ -122,6 +137,10 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
 
     if (!response.ok) {
         const text = await response.text();
+        // Check for specific proxy busy messages in text
+        if (text.toLowerCase().includes("busy") || text.toLowerCase().includes("unavailable") || text.toLowerCase().includes("timeout")) {
+             throw new Error("الوسيط (Proxy) مشغول حالياً. حاول مرة أخرى لاحقاً.");
+        }
         throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
     }
 
@@ -152,7 +171,7 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     let userMessage = error.message;
 
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        userMessage = "خطأ شبكة: تعذر الاتصال. يرجى التحقق من الإنترنت.";
+        userMessage = "خطأ شبكة: تعذر الاتصال بالإنترنت أو بخدمة الوسيط.";
     }
 
     return {
