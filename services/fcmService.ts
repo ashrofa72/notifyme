@@ -3,32 +3,22 @@ import { Student, NotificationLog } from '../types';
 export const getStoredServerKey = () => localStorage.getItem('FCM_SERVER_KEY') || '';
 export const setStoredServerKey = (key: string) => localStorage.setItem('FCM_SERVER_KEY', key);
 
-// List of CORS proxies to try in order of reliability
-const PROXY_GENERATORS = [
-    // 1. corsproxy.io - Standard reliable proxy (supports POST)
-    (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    // 2. CodeTabs - Good alternative for POST requests
-    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    // 3. ThingProxy - Fallback
-    (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
-];
+// The Project ID from your Service Account JSON
+const PROJECT_ID = 'notify-me-efcdf';
 
 export const sendFCMNotification = async (student: Student): Promise<NotificationLog> => {
-  const serverKey = getStoredServerKey();
+  const keyOrToken = getStoredServerKey();
   
+  // Determine message body based on status
   const title = "تنبيه حضور - مدرسة الزهراء";
   const body = student.status === 'Absent' 
     ? `تنبيه: ابنكم ${student.studentName} غائب اليوم.` 
     : `تنبيه: وصل ابنكم ${student.studentName} متأخراً اليوم.`;
 
-  // Safe ID generation (crypto.randomUUID requires secure context)
-  const notificationId = typeof crypto !== 'undefined' && crypto.randomUUID 
-    ? crypto.randomUUID() 
-    : `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
+  const notificationId = crypto.randomUUID();
   const timestamp = new Date().toLocaleString('ar-EG');
 
-  // 1. Validation
+  // 1. Validation: Check if Token exists
   if (!student.fcmToken || student.fcmToken.length < 10) {
     return {
       id: notificationId,
@@ -37,14 +27,15 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
       type: student.status === 'Absent' ? 'Absent' : 'Late',
       timestamp: timestamp,
       status: 'Failed',
-      message: `فشل: لا يوجد رمز (Token). يرجى ربط جهاز ولي الأمر.`,
+      message: `فشل: لا يوجد رمز (Token) صالح لهذا الطالب.`,
     };
   }
 
-  // 2. Simulation Mode
-  if (!serverKey) {
-    console.warn("No FCM Server Key found. Simulating notification.");
+  // 2. Simulation Mode (If no key)
+  if (!keyOrToken) {
+    console.warn("No FCM Key found. Simulating notification.");
     await new Promise((resolve) => setTimeout(resolve, 800));
+    
     return {
       id: notificationId,
       studentName: student.studentName,
@@ -56,112 +47,77 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     };
   }
 
-  // 3. Real FCM Logic
-  const payload = {
-    to: student.fcmToken,
-    notification: { title, body },
-    data: {
-      studentCode: student.studentCode,
-      status: student.status.toLowerCase(),
-      click_action: "FLUTTER_NOTIFICATION_CLICK"
-    }
-  };
-
-  const FCM_ENDPOINT = 'https://fcm.googleapis.com/fcm/send';
-
-  const performFetch = async (url: string) => {
-    return fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `key=${serverKey}`
-      },
-      body: JSON.stringify(payload)
-    });
-  };
+  // 3. Determine API Version based on Key format
+  // Legacy Keys usually start with AIza...
+  // OAuth Tokens (v1) usually start with ya29...
+  const isV1Token = keyOrToken.startsWith('ya29');
 
   try {
-    let response: Response | undefined;
-    let lastErrorMsg = "";
+    let response;
     
-    console.log("Sending FCM notification via proxies...");
-        
-    for (const generateProxyUrl of PROXY_GENERATORS) {
-        try {
-            const proxyUrl = generateProxyUrl(FCM_ENDPOINT);
-            console.log(`Trying proxy: ${proxyUrl}`);
-            const res = await performFetch(proxyUrl);
-            
-            const status = res.status;
-            const contentType = res.headers.get("content-type") || "";
-            
-            // CRITICAL: Filter out Proxy Errors
-            // If the proxy returns HTML (like 404 Not Found page, or 502 Bad Gateway page), 
-            // it is NOT a response from Firebase. We must SKIP it and try the next proxy.
-            const isJson = contentType.includes("json");
-            
-            // Scenario 1: Success (200 OK)
-            if (res.ok) {
-                response = res;
-                break;
-            }
-
-            // Scenario 2: Auth Error (401). This comes from Firebase, so it's a "valid" failure. Stop loop.
-            if (status === 401) {
-                response = res;
-                break;
-            }
-
-            // Scenario 3: Real Firebase Error (400/404/500 but with JSON body)
-            if (isJson) {
-                response = res;
-                break;
-            }
-
-            // Scenario 4: Proxy Error (HTML page, text, or weird 404/502 from proxy middleware)
-            // We ignore this response and try the next proxy.
-            console.warn(`Proxy ${proxyUrl} returned invalid response [${status}] (${contentType}). Skipping.`);
-            lastErrorMsg = `Proxy Error ${status}`;
-            
-            // Add small delay before hitting next proxy
-            await new Promise(r => setTimeout(r, 500));
-
-        } catch (proxyError: any) {
-            console.warn("Proxy connection attempt failed:", proxyError);
-            lastErrorMsg = proxyError.message;
+    if (isV1Token) {
+      // --- HTTP v1 API (Modern) ---
+      // Requires: OAuth 2.0 Access Token
+      const v1Payload = {
+        message: {
+          token: student.fcmToken,
+          notification: {
+            title,
+            body,
+          },
+          data: {
+            studentCode: student.studentCode,
+            status: student.status.toLowerCase(),
+            click_action: "FLUTTER_NOTIFICATION_CLICK"
+          }
         }
-    }
+      };
 
-    // If loop finishes and we still don't have a valid response object
-    if (!response) {
-        let detailedMsg = lastErrorMsg;
-        // Improve error message for common network issues
-        if (lastErrorMsg.includes("Failed to fetch") || lastErrorMsg.includes("NetworkError")) {
-             detailedMsg = "خطأ شبكة (Network Error). قد يكون بسبب مانع الإعلانات (AdBlock) أو جدار حماية.";
+      response = await fetch(`https://fcm.googleapis.com/v1/projects/${PROJECT_ID}/messages:send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${keyOrToken}`
+        },
+        body: JSON.stringify(v1Payload)
+      });
+
+    } else {
+      // --- Legacy HTTP API (Old) ---
+      // Requires: Server Key (starts with AIza)
+      const legacyPayload = {
+        to: student.fcmToken,
+        notification: {
+          title,
+          body,
+        },
+        data: {
+          studentCode: student.studentCode,
+          status: student.status.toLowerCase(),
+          click_action: "FLUTTER_NOTIFICATION_CLICK"
         }
-        throw new Error(`تعذر الاتصال بخادم Firebase عبر جميع الوسطاء. (${detailedMsg})`);
-    }
+      };
 
-    if (response.status === 401) {
-        throw new Error("401 Unauthorized: المفتاح خطأ أو خدمة (Legacy API) غير مفعلة في Cloud Console.");
+      response = await fetch('https://fcm.googleapis.com/fcm/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `key=${keyOrToken}`
+        },
+        body: JSON.stringify(legacyPayload)
+      });
     }
 
     if (!response.ok) {
         const text = await response.text();
-        // Double check: If it's HTML error that slipped through
-        if (text.trim().startsWith("<")) {
-             throw new Error("خطأ من الوسيط (Proxy): استجابة غير صحيحة (HTML). حاول مرة أخرى.");
-        }
-        throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+        throw new Error(`HTTP ${response.status}: ${text}`);
     }
 
     const data = await response.json();
     
-    if (data.failure > 0) {
+    // Check for Legacy API failure structure
+    if (!isV1Token && data.failure > 0) {
        const errorType = data.results?.[0]?.error || "Unknown FCM Error";
-       if (errorType === "InvalidRegistration" || errorType === "NotRegistered") {
-           throw new Error("الرمز (Token) غير صالح أو منتهي الصلاحية.");
-       }
        throw new Error(`Firebase Error: ${errorType}`);
     }
 
@@ -180,8 +136,13 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     console.error("Failed to send notification", error);
     
     let userMessage = error.message;
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        userMessage = "خطأ شبكة: تعذر الاتصال بالإنترنت أو تم حظر الطلب (AdBlock).";
+
+    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        userMessage = "خطأ شبكة/CORS: المتصفح منع الاتصال. تأكد من إعدادات الشبكة.";
+    } else if (userMessage.includes('UNAUTHENTICATED') || userMessage.includes('401')) {
+        userMessage = isV1Token 
+            ? "الرمز (Access Token) منتهي الصلاحية. يرجى توليد رمز جديد."
+            : "مفتاح الخادم (Legacy Key) غير صحيح.";
     }
 
     return {

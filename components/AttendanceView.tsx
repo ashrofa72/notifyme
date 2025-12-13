@@ -136,20 +136,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     onNotificationsSent(newLogs);
     setIsSending(false);
     
-    const successCount = newLogs.filter(l => l.status === 'Sent').length;
-    const failCount = newLogs.length - successCount;
-    const failedLogs = newLogs.filter(l => l.status === 'Failed');
-    
-    let message = `تم إرسال ${successCount} إشعار بنجاح.`;
-    
-    if (failCount > 0) {
-        const uniqueErrors = Array.from(new Set(failedLogs.map(l => l.message)));
-        message += `\n\nفشل إرسال ${failCount} إشعار:\n`;
-        uniqueErrors.forEach(err => message += `- ${err}\n`);
-        message += `\n(يرجى مراجعة صفحة الإعدادات أو التأكد من ربط الأجهزة)`;
-    }
-    
-    alert(message);
+    alert(`تم إرسال ${newLogs.filter(l => l.status === 'Sent').length} إشعار بنجاح.`);
   };
 
   return (

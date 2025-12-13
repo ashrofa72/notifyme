@@ -7,19 +7,10 @@ import { SettingsView } from './components/SettingsView';
 import { AuthPage } from './components/AuthPage';
 import { ViewState, Student, NotificationLog, AttendanceStatus } from './types';
 import { MOCK_CLASSES, INITIAL_LOGS } from './services/mockData';
-import { 
-    subscribeToStudents, 
-    fetchStudentsFromGoogleSheet, 
-    updateStudentStatusInDb, 
-    markNotificationAsSentInDb,
-    syncSheetToFirestore
-} from './services/dataService';
+import { getStudents, fetchStudentsFromGoogleSheet } from './services/dataService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
-import { Loader2, ShieldAlert } from 'lucide-react';
-
-// Define allowed admins - Fixed typo in hotmail.com
-const ADMIN_EMAILS = ['as.ka1@hotmail.om', 'as.ka1@hotmail.com'];
+import { Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
   // Auth State
@@ -42,19 +33,22 @@ const App: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  // Load Data only when user is logged in - REALTIME
+  // Load Data only when user is logged in
   useEffect(() => {
     if (!user) return;
 
-    setIsDataLoading(true);
-    // This listener automatically updates the UI whenever Firestore changes
-    // (e.g. Parent links device, or Admin changes status)
-    const unsubscribe = subscribeToStudents((data) => {
-      setStudents(data);
+    const fetchData = async () => {
+      setIsDataLoading(true);
+      const data = await getStudents();
+      if (data.length > 0) {
+        setStudents(data);
+      } else {
+        setStudents([]); 
+      }
       setIsDataLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchData();
   }, [user]); 
 
   // Handlers
@@ -68,41 +62,44 @@ const App: React.FC = () => {
     }
   };
 
-  // UPDATED: Now saves to Firestore directly
-  const handleUpdateStudentStatus = useCallback(async (studentCode: string, status: AttendanceStatus) => {
-    // We do NOT set local state here (setStudents). 
-    // We update Firestore, and the `subscribeToStudents` listener will update the UI automatically.
-    try {
-        await updateStudentStatusInDb(studentCode, status);
-    } catch (error: any) {
-        console.error("Update status failed:", error);
-        // Display specific error message if available
-        alert(`فشل تحديث الحالة: ${error.message || "يرجى التحقق من الاتصال."}`);
-    }
+  const handleUpdateStudentStatus = useCallback((studentCode: string, status: AttendanceStatus) => {
+    setStudents((prev) => 
+      prev.map((s) => {
+        if (s.studentCode === studentCode) {
+          return { ...s, status };
+        }
+        return s;
+      })
+    );
   }, []);
 
   const handleNotificationsSent = useCallback((newLogs: NotificationLog[]) => {
     setNotificationLogs((prev) => [...newLogs, ...prev]);
   }, []);
 
-  // UPDATED: Now saves to Firestore directly
-  const handleMarkNotificationSent = useCallback(async (studentCode: string) => {
-    try {
-        await markNotificationAsSentInDb(studentCode);
-    } catch (error) {
-        console.error("Failed to mark notification sent in DB", error);
-    }
+  const handleMarkNotificationSent = useCallback((studentCode: string) => {
+    setStudents((prev) =>
+      prev.map((s) => s.studentCode === studentCode ? { ...s, notificationSent: true } : s)
+    );
   }, []);
 
   const handleFetchClassData = useCallback(async (grade: string, className: string) => {
-    // Logic: If user selects Grade 1 - Class 1, we try to sync from Google Sheet
+    // Logic: If user selects Grade 1 - Class 1, we try to fetch from Google Sheet
     if (grade === '1' && className === '1') {
        try {
-         // We use the sync function that writes to DB directly
-         const msg = await syncSheetToFirestore();
-         console.log(msg);
+         const sheetStudents = await fetchStudentsFromGoogleSheet();
+         
+         if (sheetStudents.length > 0) {
+            setStudents(prev => {
+                // Remove existing students for this specific class to avoid duplicates
+                const otherStudents = prev.filter(s => !(s.grade === grade && s.className === className));
+                // Add the fresh data
+                return [...otherStudents, ...sheetStudents];
+            });
+         }
        } catch (e) {
-         console.warn("Failed to auto-sync Google Sheet data.", e);
+         console.warn("Failed to fetch Google Sheet data. Ensure sheet is published to web.");
+         alert("تعذر تحميل البيانات من Google Sheet. يرجى التأكد من نشر الورقة (File -> Share -> Publish to web).");
        }
     }
   }, []);
@@ -145,33 +142,6 @@ const App: React.FC = () => {
 
   if (!user) {
     return <AuthPage />;
-  }
-
-  // ADMIN CHECK
-  const isAuthorized = user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
-
-  if (!isAuthorized) {
-    return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4" dir="rtl">
-            <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-gray-100">
-                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <ShieldAlert className="w-8 h-8" />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">غير مصرح بالدخول</h2>
-                <p className="text-gray-600 mb-6 leading-relaxed">
-                    عذراً، هذا النظام مخصص للمسؤولين فقط.
-                    <br />
-                    الحساب <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded mx-1" dir="ltr">{user.email}</span> لا يملك صلاحيات الوصول.
-                </p>
-                <button 
-                    onClick={handleLogout}
-                    className="w-full bg-gray-900 text-white py-2.5 rounded-lg font-medium hover:bg-gray-800 transition shadow-lg shadow-gray-200"
-                >
-                    تسجيل الخروج
-                </button>
-            </div>
-        </div>
-    );
   }
 
   return (

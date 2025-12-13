@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, AlertTriangle, Settings, CheckCircle, XCircle, ExternalLink } from 'lucide-react';
+import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, FileJson, AlertTriangle } from 'lucide-react';
 import { getStoredServerKey, setStoredServerKey } from '../services/fcmService';
 import { seedDatabase, syncSheetToFirestore } from '../services/dataService';
-import { firebaseConfig } from '../services/firebase';
 
 export const SettingsView: React.FC = () => {
   const [serverKey, setServerKey] = useState('');
@@ -13,25 +12,9 @@ export const SettingsView: React.FC = () => {
     setServerKey(getStoredServerKey());
   }, []);
 
-  // Validation Logic
-  const isValidFormat = serverKey === '' || serverKey.startsWith('AIza');
-  const isClientKey = serverKey === firebaseConfig.apiKey;
-
-  const firebaseSettingsUrl = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/settings/cloudmessaging`;
-
   const handleSaveKey = () => {
-    if (serverKey && !serverKey.startsWith('AIza')) {
-        alert("تنسيق المفتاح غير صحيح. يجب أن يبدأ بـ 'AIza'.");
-        return;
-    }
-    
-    if (isClientKey) {
-        alert("تنبيه: لقد أدخلت 'Client API Key'. هذا المفتاح مخصص لاتصال التطبيق فقط ولا يملك صلاحية إرسال الإشعارات.\n\nيرجى نسخ 'Server Key' من تبويب Cloud Messaging.");
-        return;
-    }
-
     setStoredServerKey(serverKey);
-    alert('تم حفظ مفتاح الخادم بنجاح!');
+    alert('تم حفظ المفتاح بنجاح!');
   };
 
   const handleSeed = async () => {
@@ -50,7 +33,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleSyncSheet = async () => {
-    if (confirm("سيتم جلب بيانات الطلاب من Google Sheet وتحديث قاعدة بيانات Firebase. لن يتم حذف الرموز (Tokens) الموجودة مسبقاً. هل تريد المتابعة؟")) {
+    if (confirm("سيتم جلب بيانات الطلاب من Google Sheet وتحديث قاعدة بيانات Firebase. هل تريد المتابعة؟")) {
         setIsSyncing(true);
         try {
             const message = await syncSheetToFirestore();
@@ -71,91 +54,55 @@ export const SettingsView: React.FC = () => {
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-8">
         
-        {/* Step 1: Server Key */}
+        {/* Step 1: Credentials */}
         <div>
           <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
             <Key className="w-5 h-5 text-blue-600" />
-            1. مفتاح الخادم (FCM Server Key)
+            1. مفتاح الإشعارات (Notification Key)
           </h3>
           
-          <div className="mt-3 mb-4 bg-blue-50 border border-blue-200 p-4 rounded-lg text-sm text-blue-800">
-             <h4 className="font-bold flex items-center gap-1 mb-2">
-                 <AlertTriangle className="w-4 h-4" />
-                 كيف تحصل على المفتاح الصحيح؟
-             </h4>
-             <p className="mb-3 text-gray-700">
-                 حدث خطأ في الرابط السابق. يرجى اتباع الخطوات اليدوية التالية بدقة:
-             </p>
-             
-             <div className="space-y-4 bg-white p-4 rounded border border-blue-100">
-                 <div className="flex gap-3">
-                     <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-xs">1</span>
-                     <div className="flex-1">
-                        <p className="mb-2 font-medium">اضغط الزر أدناه لفتح إعدادات Firebase:</p>
-                        <a 
-                            href={firebaseSettingsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition text-sm"
-                        >
-                            <Settings className="w-4 h-4" />
-                            فتح Firebase Console (Cloud Messaging)
-                        </a>
-                     </div>
-                 </div>
-
-                 <div className="flex gap-3">
-                     <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-xs">2</span>
-                     <div className="flex-1">
-                        <p className="mb-1 text-gray-800">ابحث عن قسم <strong>Cloud Messaging API (Legacy)</strong> في تلك الصفحة.</p>
-                        <ul className="list-disc list-inside text-gray-600 space-y-1 text-xs mt-1">
-                            <li>إذا كان <strong>Enabled</strong>: انسخ الـ Key الذي يظهر تحته (يبدأ بـ <code>AIza</code>).</li>
-                            <li>إذا كان <strong>Disabled</strong>: اضغط على النقاط الثلاث (⋮) ثم اختر <strong>Manage API in Google Cloud Console</strong> وقم بتفعيله من هناك، ثم عد وحدث الصفحة.</li>
-                        </ul>
-                     </div>
-                 </div>
-             </div>
+          <div className="mt-4 mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <h4 className="font-bold text-yellow-800 flex items-center gap-2 mb-2">
+                <FileJson className="w-4 h-4" />
+                لديك ملف JSON (Service Account)؟
+            </h4>
+            <p className="text-sm text-yellow-800 leading-relaxed mb-3">
+                الملف الذي يبدأ بـ <code>"type": "service_account"</code> يحتوي على مفاتيح سرية <strong>لا يمكن</strong> استخدامها مباشرة في المتصفح لأسباب أمنية.
+            </p>
+            <p className="text-sm text-yellow-800 font-semibold">لديك خياران:</p>
+            <ul className="list-disc list-inside text-sm text-yellow-800 mt-1 space-y-1">
+                <li>
+                    <strong>الخيار الأسهل:</strong> استخدم <strong>Legacy Server Key</strong> (يبدأ بـ AIza).
+                    <a href="https://console.firebase.google.com/project/notify-me-efcdf/settings/cloudmessaging" target="_blank" className="underline mr-1 text-blue-600 font-bold">
+                        اضغط هنا لتفعيل Legacy Cloud Messaging
+                    </a> في Firebase Console ثم انسخ المفتاح.
+                </li>
+                <li>
+                    <strong>الخيار المتقدم (JSON):</strong> إذا كنت مصرًا على استخدام الـ JSON، يجب عليك توليد <strong>Access Token</strong> مؤقت (يبدأ بـ ya29) باستخدام أمر مثل <code>gcloud auth print-access-token</code> ولصقه أدناه.
+                </li>
+            </ul>
           </div>
+
+          <p className="text-sm text-gray-500 mt-1 mb-2">
+            أدخل <strong>Legacy Server Key</strong> أو <strong>OAuth Access Token</strong>:
+          </p>
           
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-3">
-                <div className="relative flex-1">
-                    <input 
-                    type="password" 
-                    value={serverKey}
-                    onChange={(e) => setServerKey(e.target.value.trim())}
-                    placeholder="ضع Server Key هنا (يبدأ بـ AIza...)"
-                    className={`w-full p-2 border rounded-lg focus:ring-2 outline-none text-left pl-10 ${
-                        !isValidFormat || isClientKey ? 'border-red-300 focus:ring-red-500 bg-red-50' : 'border-gray-300 focus:ring-blue-500'
-                    }`}
-                    dir="ltr"
-                    />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                        {serverKey && (isValidFormat && !isClientKey ? <CheckCircle className="w-4 h-4 text-green-500" /> : <XCircle className="w-4 h-4 text-red-500" />)}
-                    </div>
-                </div>
-                <button 
-                onClick={handleSaveKey}
-                disabled={!isValidFormat || !serverKey || isClientKey}
-                className={`text-white px-4 py-2 rounded-lg font-medium transition flex items-center gap-2 ${
-                    isValidFormat && serverKey && !isClientKey ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'
-                }`}
-                >
-                <Save className="w-4 h-4" />
-                حفظ
-                </button>
-            </div>
-            {!isValidFormat && (
-                <p className="text-red-600 text-xs font-medium px-1">
-                    تنبيه: هذا المفتاح لا يبدو صحيحاً. مفاتيح Google API يجب أن تبدأ بـ "AIza".
-                </p>
-            )}
-            {isClientKey && (
-                <p className="text-orange-600 text-xs font-bold px-1 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    تنبيه: هذا هو مفتاح العميل (Client Key). لن يعمل لإرسال الإشعارات. يرجى إحضار الـ Server Key.
-                </p>
-            )}
+          <div className="flex gap-3">
+            <input 
+              type="password" 
+              value={serverKey}
+              onChange={(e) => setServerKey(e.target.value)}
+              placeholder="AIza... (Legacy) OR ya29... (Token)"
+              className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-left font-mono text-sm"
+              dir="ltr"
+            />
+            <button 
+              onClick={handleSaveKey}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              حفظ
+            </button>
           </div>
         </div>
 
@@ -204,7 +151,6 @@ export const SettingsView: React.FC = () => {
                 <p>
                     تم إنشاء كود تطبيق الهاتف داخل المجلد <code>mobile_app/</code> في ملفات المشروع.
                 </p>
-                
                 <div className="bg-white p-4 rounded border border-green-200">
                     <h4 className="font-bold flex items-center gap-2 mb-2">
                         <Code className="w-4 h-4" />
@@ -214,14 +160,10 @@ export const SettingsView: React.FC = () => {
                         <li>انسخ المجلد <code>mobile_app</code> إلى خارج المشروع.</li>
                         <li>افتحه باستخدام VS Code أو Android Studio.</li>
                         <li>نفذ الأمر: <code>flutter pub get</code></li>
-                        <li>أضف ملف <code>google-services.json</code> (من Firebase Console) إلى مجلد <code>android/app/</code>.</li>
+                        <li>أضف ملف <code>google-services.json</code> إلى مجلد <code>android/app/</code>.</li>
                         <li>شغل التطبيق: <code>flutter run</code>.</li>
                     </ol>
                 </div>
-
-                <p className="text-xs text-gray-500 mt-2">
-                    * ملاحظة: يجب تفعيل Cloud Messaging و Firestore في Firebase Console ليعمل التطبيق.
-                </p>
              </div>
         </div>
         

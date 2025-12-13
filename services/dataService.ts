@@ -1,11 +1,12 @@
 import { db } from './firebase';
-import { collection, getDocs, doc, writeBatch, getDoc, setDoc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { Student, AttendanceStatus } from '../types';
+import { collection, getDocs, doc, writeBatch, getDoc, setDoc } from 'firebase/firestore';
+import { Student } from '../types';
 import { MOCK_STUDENTS } from './mockData';
 
 const STUDENTS_COLLECTION = 'students';
 
 // Fetch students primarily from Firestore. 
+// This is the Source of Truth because it contains the FCM Tokens written by the Parent App.
 export const getStudents = async (): Promise<Student[]> => {
   try {
     const studentsCol = collection(db, STUDENTS_COLLECTION);
@@ -20,51 +21,6 @@ export const getStudents = async (): Promise<Student[]> => {
   } catch (error: any) {
     console.warn("Firestore access failed. Falling back to MOCK data.", error);
     return MOCK_STUDENTS;
-  }
-};
-
-// Real-time subscription
-export const subscribeToStudents = (onData: (students: Student[]) => void): (() => void) => {
-  const studentsCol = collection(db, STUDENTS_COLLECTION);
-  const unsubscribe = onSnapshot(studentsCol, (snapshot) => {
-    const students = snapshot.docs.map(doc => doc.data() as Student);
-    onData(students);
-  }, (error) => {
-    console.error("Error watching students:", error);
-  });
-  return unsubscribe;
-};
-
-// NEW: Update Student Attendance Status in Firestore
-export const updateStudentStatusInDb = async (studentCode: string, status: AttendanceStatus): Promise<void> => {
-  try {
-    const studentRef = doc(db, STUDENTS_COLLECTION, studentCode);
-    
-    // Create update object dynamically to avoid sending 'undefined' which crashes Firestore
-    const updates: Record<string, any> = { status };
-    
-    // If status is changed back to Present, reset the notification flag
-    if (status === 'Present') {
-        updates.notificationSent = false;
-    }
-    
-    await updateDoc(studentRef, updates);
-  } catch (error) {
-    console.error(`Failed to update status for ${studentCode}:`, error);
-    throw error;
-  }
-};
-
-// NEW: Mark Notification as Sent in Firestore
-export const markNotificationAsSentInDb = async (studentCode: string): Promise<void> => {
-  try {
-    const studentRef = doc(db, STUDENTS_COLLECTION, studentCode);
-    await updateDoc(studentRef, { 
-        notificationSent: true 
-    });
-  } catch (error) {
-    console.error(`Failed to mark notification for ${studentCode}:`, error);
-    throw error;
   }
 };
 
@@ -85,31 +41,34 @@ export const seedDatabase = async (): Promise<void> => {
   }
 };
 
+// New Function: Reads Google Sheet and updates Firestore
+// It PRESERVES existing Tokens if a parent has already registered.
 export const syncSheetToFirestore = async (): Promise<string> => {
     try {
+        // 1. Fetch fresh roster from Google Sheets
         const sheetStudents = await fetchStudentsFromGoogleSheet();
         if (sheetStudents.length === 0) throw new Error("Google Sheet is empty or unreadable.");
 
         const batch = writeBatch(db);
         let updatedCount = 0;
 
+        // 2. Loop through every student from the sheet
         for (const sheetStudent of sheetStudents) {
-            const code = sheetStudent.studentCode.trim().toUpperCase();
-            const studentRef = doc(db, STUDENTS_COLLECTION, code);
+            const studentRef = doc(db, STUDENTS_COLLECTION, sheetStudent.studentCode);
             const studentSnap = await getDoc(studentRef);
 
             if (studentSnap.exists()) {
                 const existingData = studentSnap.data() as Student;
+                // MERGE STRATEGY: Update name/class/phone, but KEEP the fcmToken if the parent has logged in via Mobile App
                 const mergedData = {
                     ...sheetStudent,
-                    studentCode: code,
-                    fcmToken: existingData.fcmToken || sheetStudent.fcmToken || '', 
-                    status: existingData.status || 'Present', // Keep existing status
-                    notificationSent: existingData.notificationSent || false
+                    fcmToken: existingData.fcmToken || sheetStudent.fcmToken || '', // Prefer existing token
+                    status: existingData.status || 'Present' // Preserve attendance status if set today
                 };
                 batch.set(studentRef, mergedData);
             } else {
-                batch.set(studentRef, { ...sheetStudent, studentCode: code });
+                // New Student
+                batch.set(studentRef, sheetStudent);
             }
             updatedCount++;
         }
@@ -125,13 +84,17 @@ export const syncSheetToFirestore = async (): Promise<string> => {
 const normalizeKey = (key: string) => key.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export const fetchStudentsFromGoogleSheet = async (): Promise<Student[]> => {
+  // CONFIGURATION: Specific Google Sheet ID and GID provided by user
   const SHEET_ID = '10BzoAxaSy-qnD95M51MsH2hYVen26bBQ97VbVkiyhDM';
   const GID = '1557759614';
+  
+  // Use the export endpoint to get CSV data directly
   const TARGET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
 
   try {
     const response = await fetch(TARGET_URL, {
         method: 'GET',
+        // 'omit' credentials is key for CORS requests to public sheets
         credentials: 'omit',
         redirect: 'follow',
     });
@@ -140,13 +103,63 @@ export const fetchStudentsFromGoogleSheet = async (): Promise<Student[]> => {
        throw new Error(`Failed to fetch data (Status: ${response.status}).`);
     }
 
+    const contentType = response.headers.get("content-type");
     const textData = await response.text();
 
+    // Check if we got an HTML login page instead of data (common error if sheet is not published)
     if (textData.trim().toLowerCase().startsWith('<!doctype html') || textData.includes('<html')) {
-        throw new Error("Google Sheet returned HTML. Please ensure the Sheet is 'Published to the web'.");
+        throw new Error("Google Sheet returned HTML. Please ensure the Sheet is 'Published to the web' (File -> Share -> Publish to web) and accessible to anyone with the link.");
     }
 
-    return parseCSV(textData);
+    let jsonData;
+    try {
+        jsonData = JSON.parse(textData);
+    } catch (e) {
+        // Expected for CSV endpoint
+        return parseCSV(textData);
+    }
+
+    // Fallback for JSON response (if we switch back to Apps Script later)
+    const dataArray = Array.isArray(jsonData) ? jsonData : [];
+
+    return dataArray.map((s: any) => {
+        const keys = Object.keys(s);
+        const findValue = (searchKeys: string[]) => {
+            const foundKey = keys.find(k => searchKeys.some(sk => normalizeKey(k).includes(normalizeKey(sk))));
+            return foundKey ? s[foundKey] : null;
+        };
+
+        let rawGrade = findValue(['grade']) || '1';
+        let rawClass = findValue(['student classroom', 'classroom', 'class', 'section']) || '1';
+        
+        if (rawClass && /[-/.]/.test(String(rawClass))) {
+            const parts = String(rawClass).split(/[-/.]/);
+            if (parts.length >= 2) {
+                const p0 = parts[0].trim();
+                const p1 = parts[1].trim();
+                if (p0) rawGrade = p0;
+                if (p1) rawClass = p1;
+            }
+        }
+
+        const studentName = findValue(['name', 'student']) || 'Unknown';
+        const studentCode = findValue(['id', 'code']) || `GS-${Math.random().toString(36).substr(2, 9)}`;
+        const parentName = findValue(['parent', 'father', 'mother']) || '';
+        const parentPhone = findValue(['phone', 'mobile']) || '';
+        const fcmToken = findValue(['token', 'fcm']) || '';
+
+        return {
+            studentCode: String(studentCode),
+            studentName: studentName,
+            grade: String(rawGrade),
+            className: String(rawClass),
+            status: 'Present',
+            notificationSent: false,
+            fcmToken: fcmToken,
+            parentPhone: String(parentPhone),
+            parentName: parentName
+        };
+    });
 
   } catch (error) {
     console.error("Google Sheet Fetch Error:", error);
@@ -201,16 +214,14 @@ const parseCSV = (text: string): Student[] => {
          }
      }
 
-     const code = (idxCode > -1 && data[idxCode]) ? data[idxCode] : `GS-${1000 + index}`;
-
      return {
-        studentCode: code.trim().toUpperCase(),
+        studentCode: (idxCode > -1 && data[idxCode]) ? data[idxCode] : `GS-${1000 + index}`,
         studentName: (idxName > -1 && data[idxName]) ? data[idxName] : 'Unknown Student',
         grade: grade || '1',
         className: className || '1',
         parentName: (idxPName > -1 && data[idxPName]) ? data[idxPName] : '',
         parentPhone: (idxPhone > -1 && data[idxPhone]) ? data[idxPhone] : '',
-        fcmToken: '', 
+        fcmToken: '', // Token is empty initially. Parent App must fill this.
         status: 'Present',
         notificationSent: false
      } as Student;
