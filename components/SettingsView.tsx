@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, HelpCircle, Smartphone, Code, RefreshCw, ExternalLink } from 'lucide-react';
-import { getStoredServerKey, setStoredServerKey } from '../services/fcmService';
-import { seedDatabase, syncSheetToFirestore } from '../services/dataService';
+import { Save, Database, Key, HelpCircle, Smartphone, Code, RefreshCw, ExternalLink, Link as LinkIcon, Loader2 } from 'lucide-react';
+import { getStoredServerKey, setStoredServerKey, requestBrowserToken } from '../services/fcmService';
+import { seedDatabase, syncSheetToFirestore, updateStudentToken } from '../services/dataService';
 
 export const SettingsView: React.FC = () => {
   const [serverKey, setServerKey] = useState('');
   const [isSeeding, setIsSeeding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Simulator State
+  const [simStudentCode, setSimStudentCode] = useState('');
+  const [isLinking, setIsLinking] = useState(false);
 
   // Hardcoded project ID from existing configuration
   const PROJECT_ID = "notify-me-efcdf";
@@ -46,6 +50,30 @@ export const SettingsView: React.FC = () => {
         } finally {
             setIsSyncing(false);
         }
+    }
+  };
+
+  const handleLinkDevice = async () => {
+    if (!simStudentCode.trim()) {
+        alert("يرجى إدخال كود الطالب.");
+        return;
+    }
+
+    setIsLinking(true);
+    try {
+        const token = await requestBrowserToken();
+        if (token) {
+            await updateStudentToken(simStudentCode.trim(), token);
+            alert(`تم ربط هذا المتصفح بنجاح بالطالب: ${simStudentCode}`);
+            setSimStudentCode('');
+        } else {
+            alert("فشل الحصول على الرمز. تأكد من منح إذن الإشعارات للمتصفح.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("حدث خطأ أثناء الربط.");
+    } finally {
+        setIsLinking(false);
     }
   };
 
@@ -159,29 +187,50 @@ export const SettingsView: React.FC = () => {
 
         <div className="border-t border-gray-100"></div>
 
-        {/* Step 3: Mobile App Instructions */}
-        <div className="bg-green-50 border border-green-100 rounded-lg p-5">
-             <h3 className="text-lg font-semibold text-green-800 flex items-center gap-2 mb-3">
-                 <Smartphone className="w-5 h-5" />
-                 3. تطبيق الهاتف (Flutter App)
+        {/* Step 3: Simulator (Link Current Browser) */}
+        <div>
+           <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+            <Smartphone className="w-5 h-5 text-green-600" />
+            3. محاكي تطبيق الولي (Link This Device)
+          </h3>
+          <p className="text-sm text-gray-500 mt-1 mb-4">
+            استخدم هذه الأداة لربط متصفحك الحالي بطالب معين لتجربة استلام الإشعارات دون الحاجة لتطبيق الهاتف.
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
+             <input 
+                type="text" 
+                value={simStudentCode}
+                onChange={(e) => setSimStudentCode(e.target.value)}
+                placeholder="أدخل كود الطالب (مثال: S1001)"
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-left font-mono text-sm"
+                dir="ltr"
+             />
+             <button 
+                onClick={handleLinkDevice}
+                disabled={isLinking}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition flex items-center gap-2 justify-center shadow-sm disabled:opacity-50"
+             >
+                {isLinking ? <Loader2 className="w-4 h-4 animate-spin" /> : <LinkIcon className="w-4 h-4" />}
+                ربط المتصفح بالطالب
+             </button>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100"></div>
+
+        {/* Step 4: Mobile App Instructions */}
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 opacity-75">
+             <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2 mb-2">
+                 <Code className="w-4 h-4" />
+                 للمطورين: كيفية عمل تطبيق Flutter
              </h3>
-             <div className="text-sm text-green-800 space-y-4">
-                <p>
-                    يحتاج ولي الأمر لربط جهازه بالطالب لتلقي الإشعارات.
-                </p>
-                <div className="bg-white p-4 rounded border border-green-200">
-                    <h4 className="font-bold flex items-center gap-2 mb-2">
-                        <Code className="w-4 h-4" />
-                        طريقة الربط (Login Panel):
-                    </h4>
-                    <ol className="list-decimal list-inside space-y-1 text-gray-700">
-                        <li>يقوم ولي الأمر بتحميل التطبيق وفتحه.</li>
-                        <li>يظهر له "لوحة دخول" (Login Panel) تطلب كود الطالب.</li>
-                        <li>يدخل "كود الطالب" (مثل <code>S1001</code>) ويضغط ربط.</li>
-                        <li>يقوم التطبيق بإرسال الـ Token الخاص بالجهاز إلى قاعدة البيانات وربطه بهذا الطالب.</li>
-                    </ol>
-                </div>
-             </div>
+             <ol className="list-decimal list-inside space-y-1 text-xs text-gray-600 font-mono">
+                <li>User opens Flutter app.</li>
+                <li>App gets FCM Token via <code>FirebaseMessaging.instance.getToken()</code>.</li>
+                <li>User inputs Student Code.</li>
+                <li>App writes Token to <code>students/[CODE]</code> document in Firestore.</li>
+             </ol>
         </div>
         
       </div>

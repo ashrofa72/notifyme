@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, ClassOption, AttendanceStatus, NotificationLog } from '../types';
-import { sendFCMNotification } from '../services/fcmService';
-import { Filter, Send, RotateCcw, Check, AlertCircle, Clock, Loader2, ArrowLeft, MinusSquare, CheckSquare, Square, X, Save, Smartphone } from 'lucide-react';
+import { sendFCMNotification, requestBrowserToken } from '../services/fcmService';
+import { Filter, Send, RotateCcw, Check, AlertCircle, Clock, Loader2, ArrowLeft, MinusSquare, CheckSquare, Square, X, Save, Smartphone, Zap } from 'lucide-react';
 
 interface AttendanceViewProps {
   students: Student[];
@@ -32,6 +32,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   const [editingTokenStudent, setEditingTokenStudent] = useState<Student | null>(null);
   const [newTokenValue, setNewTokenValue] = useState('');
   const [isSavingToken, setIsSavingToken] = useState(false);
+  const [isGeneratingToken, setIsGeneratingToken] = useState(false);
 
   // Trigger fetch when class 1-1 is selected (Auto-sync hook)
   useEffect(() => {
@@ -169,6 +170,23 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
             setEditingTokenStudent(student);
             setNewTokenValue('');
         }
+    }
+  };
+
+  const handleGenerateBrowserToken = async () => {
+    setIsGeneratingToken(true);
+    try {
+        const token = await requestBrowserToken();
+        if (token) {
+            setNewTokenValue(token);
+        } else {
+            alert("تعذر إنشاء رمز (Token). الرجاء التأكد من السماح بالإشعارات في المتصفح.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("حدث خطأ أثناء محاولة توليد الرمز.");
+    } finally {
+        setIsGeneratingToken(false);
     }
   };
 
@@ -443,14 +461,25 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                 <div className="mb-4">
                     <p className="text-sm text-gray-600 mb-3 leading-relaxed">
                         هذا الطالب لا يملك رمز جهاز مسجل. بدون هذا الرمز، لن يتم إرسال الإشعار.
-                        يمكنك إدخال الرمز يدوياً إذا توفر لديك، أو تخطي هذه الخطوة.
                     </p>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">FCM Token</label>
+                    
+                    <div className="flex justify-between items-end mb-1">
+                        <label className="block text-sm font-medium text-gray-700">FCM Token</label>
+                        <button 
+                            onClick={handleGenerateBrowserToken}
+                            disabled={isGeneratingToken}
+                            className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition flex items-center gap-1"
+                        >
+                            {isGeneratingToken ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                            توليد رمز لهذا المتصفح
+                        </button>
+                    </div>
+
                     <textarea 
                         value={newTokenValue}
                         onChange={(e) => setNewTokenValue(e.target.value)}
                         className="w-full p-3 border border-gray-300 rounded-lg text-xs font-mono h-24 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                        placeholder="أدخل الرمز هنا..."
+                        placeholder="أدخل الرمز يدوياً أو اضغط على 'توليد رمز' لاستخدام هذا الجهاز..."
                         dir="ltr"
                     />
                 </div>

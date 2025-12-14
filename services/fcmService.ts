@@ -1,10 +1,73 @@
 import { Student, NotificationLog } from '../types';
+import { messaging } from './firebase';
+import { getToken } from 'firebase/messaging';
 
 export const getStoredServerKey = () => localStorage.getItem('FCM_SERVER_KEY') || '';
 export const setStoredServerKey = (key: string) => localStorage.setItem('FCM_SERVER_KEY', key);
 
 // The Project ID from your Service Account JSON
 const PROJECT_ID = 'notify-me-efcdf';
+
+// New function to generate token for current browser (Parent Simulator)
+export const requestBrowserToken = async (): Promise<string | null> => {
+  if (!('Notification' in window)) {
+    alert("هذا المتصفح لا يدعم الإشعارات.");
+    return null;
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      
+      // 1. Explicitly Register Service Worker to ensure it exists
+      let swRegistration;
+      try {
+        // We register the file we created in public/firebase-messaging-sw.js
+        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        console.log('Service Worker Registered successfully:', swRegistration);
+      } catch (swError) {
+        console.warn('Service Worker registration failed or already active. Proceeding...', swError);
+      }
+
+      // 2. Get Token with VAPID Key and SW Registration
+      // Note: In a real production app, ensure your VAPID key matches your Firebase Console -> Cloud Messaging -> Web Push Certificates
+      try {
+        const token = await getToken(messaging, {
+          vapidKey: "BLmZk85aE-Cq9yYj5E_w49bF6E8dF7cHG-I1j2K3L4M5N6O7P8Q9R0S1T2U3V4W5X6Y7Z8",
+          serviceWorkerRegistration: swRegistration
+        });
+        
+        console.log("Generated Token:", token);
+        return token;
+      } catch (tokenError: any) {
+         console.warn("GetToken with VAPID failed, trying fallback...", tokenError);
+         
+         // 3. Fallback: Try without VAPID (sometimes works depending on project config)
+         try {
+            return await getToken(messaging, { serviceWorkerRegistration: swRegistration });
+         } catch (fallbackError: any) {
+             console.error("FCM Token Error:", fallbackError);
+             
+             if (fallbackError.code === 'messaging/unsupported-browser' || fallbackError.message?.includes('secure context')) {
+                 alert("خطأ: يتطلب Firebase Messaging سياقاً آمناً (HTTPS) أو Localhost.");
+             } else if (fallbackError.code === 'messaging/failed-service-worker-registration') {
+                 alert("خطأ: لم يتم العثور على ملف firebase-messaging-sw.js في المجلد العام.");
+             } else {
+                 alert(`فشل توليد الرمز: ${fallbackError.message}`);
+             }
+             return null;
+         }
+      }
+    } else {
+      console.warn('Notification permission denied.');
+      alert("تم رفض إذن الإشعارات. يرجى تفعيله من إعدادات المتصفح.");
+      return null;
+    }
+  } catch (error) {
+    console.error('Error getting browser token:', error);
+    throw error;
+  }
+};
 
 export const sendFCMNotification = async (student: Student): Promise<NotificationLog> => {
   const keyOrToken = getStoredServerKey();
