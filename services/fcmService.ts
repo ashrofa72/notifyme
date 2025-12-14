@@ -215,11 +215,11 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     let userMessage = error.message;
 
     if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-        userMessage = "خطأ شبكة/CORS: المتصفح منع الاتصال. تأكد من إعدادات الشبكة.";
+        userMessage = "تم حظر الاتصال (CORS). المتصفح يمنع إرسال الإشعارات مباشرة. للتجربة، احذف 'مفتاح الخادم' من الإعدادات لاستخدام وضع المحاكاة.";
     } else if (userMessage.includes('UNAUTHENTICATED') || userMessage.includes('401')) {
         userMessage = isV1Token 
             ? "الرمز (Access Token) منتهي الصلاحية. يرجى توليد رمز جديد."
-            : "مفتاح الخادم (Legacy Key) غير صحيح.";
+            : "مفتاح الخادم (Server Key) غير صحيح.";
     }
 
     return {

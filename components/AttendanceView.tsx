@@ -225,12 +225,16 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     onNotificationsSent(newLogs);
     setIsSending(false);
     
-    // Better Reporting Alert
+    // Improved Reporting Logic
     const sentCount = newLogs.filter(l => l.status === 'Sent').length;
     const failedCount = newLogs.filter(l => l.status === 'Failed').length;
 
     if (failedCount > 0) {
-        alert(`تم إرسال ${sentCount} إشعار بنجاح.\nفشل إرسال ${failedCount} إشعار.\n\nالسبب الأكثر شيوعاً للفشل:\nالطلاب المحددين لا يملكون رمز (Token) مسجل في قاعدة البيانات.\nيجب على ولي الأمر تحميل التطبيق وتسجيل الدخول بكود الطالب أولاً.`);
+        // Collect unique error messages
+        const errors = Array.from(new Set(newLogs.filter(l => l.status === 'Failed').map(l => l.message)));
+        const errorSummary = errors.map(e => `• ${e}`).join('\n');
+        
+        alert(`تم إرسال ${sentCount} إشعار بنجاح.\nفشل إرسال ${failedCount} إشعار.\n\nأسباب الفشل:\n${errorSummary}`);
     } else {
         alert(`تم إرسال ${sentCount} إشعار بنجاح.`);
     }
