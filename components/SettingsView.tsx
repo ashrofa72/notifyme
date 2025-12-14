@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, HelpCircle, ShieldAlert, RefreshCw, Smartphone, Code, FileJson, AlertTriangle } from 'lucide-react';
+import { Save, Database, Key, HelpCircle, Smartphone, Code, RefreshCw, ExternalLink } from 'lucide-react';
 import { getStoredServerKey, setStoredServerKey } from '../services/fcmService';
 import { seedDatabase, syncSheetToFirestore } from '../services/dataService';
 
@@ -7,6 +7,9 @@ export const SettingsView: React.FC = () => {
   const [serverKey, setServerKey] = useState('');
   const [isSeeding, setIsSeeding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Hardcoded project ID from existing configuration
+  const PROJECT_ID = "notify-me-efcdf";
 
   useEffect(() => {
     setServerKey(getStoredServerKey());
@@ -61,30 +64,45 @@ export const SettingsView: React.FC = () => {
             1. مفتاح الإشعارات (Notification Key)
           </h3>
           
-          <div className="mt-4 mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h4 className="font-bold text-yellow-800 flex items-center gap-2 mb-2">
-                <FileJson className="w-4 h-4" />
-                لديك ملف JSON (Service Account)؟
+          <div className="mt-4 mb-6 bg-blue-50 border border-blue-100 rounded-lg p-5">
+            <h4 className="font-bold text-blue-800 flex items-center gap-2 mb-3">
+                <HelpCircle className="w-5 h-5" />
+                طريقة الحصول على المفتاح
             </h4>
-            <p className="text-sm text-yellow-800 leading-relaxed mb-3">
-                الملف الذي يبدأ بـ <code>"type": "service_account"</code> يحتوي على مفاتيح سرية <strong>لا يمكن</strong> استخدامها مباشرة في المتصفح لأسباب أمنية.
+            
+            <p className="text-sm text-blue-900 mb-2">
+              لديك خياران: استخدام المفتاح القديم (Legacy) أو رمز OAuth 2.0 (ya29).
             </p>
-            <p className="text-sm text-yellow-800 font-semibold">لديك خياران:</p>
-            <ul className="list-disc list-inside text-sm text-yellow-800 mt-1 space-y-1">
-                <li>
-                    <strong>الخيار الأسهل:</strong> استخدم <strong>Legacy Server Key</strong> (يبدأ بـ AIza).
-                    <a href="https://console.firebase.google.com/project/notify-me-efcdf/settings/cloudmessaging" target="_blank" className="underline mr-1 text-blue-600 font-bold">
-                        اضغط هنا لتفعيل Legacy Cloud Messaging
-                    </a> في Firebase Console ثم انسخ المفتاح.
-                </li>
-                <li>
-                    <strong>الخيار المتقدم (JSON):</strong> إذا كنت مصرًا على استخدام الـ JSON، يجب عليك توليد <strong>Access Token</strong> مؤقت (يبدأ بـ ya29) باستخدام أمر مثل <code>gcloud auth print-access-token</code> ولصقه أدناه.
-                </li>
-            </ul>
+
+            <ol className="list-decimal list-inside text-sm text-blue-900 space-y-3 bg-white p-3 rounded border border-blue-100">
+                <li className="font-semibold">الخيار الأسهل (Legacy Key):</li>
+                <ul className="list-disc list-inside mr-5 space-y-1 text-gray-700">
+                  <li>
+                      افتح وحدة تحكم Firebase وانتقل إلى 
+                      <a 
+                        href={`https://console.firebase.google.com/project/${PROJECT_ID}/settings/cloudmessaging`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 mx-1 font-bold underline text-blue-700 hover:text-blue-900"
+                      >
+                          Project Settings &gt; Cloud Messaging
+                          <ExternalLink className="w-3 h-3" />
+                      </a>.
+                  </li>
+                  <li>ابحث عن القسم المسمى <strong>Cloud Messaging API (Legacy)</strong> في أعلى الصفحة.</li>
+                  <li>إذا كانت الحالة <strong>Disabled</strong> (معطل)، اضغط على القائمة (ثلاث نقاط) ثم اختر <em>"Manage API in Google Cloud Console"</em> واضغط <strong>Enable</strong>.</li>
+                  <li>بعد التفعيل، عد إلى صفحة إعدادات Firebase وقم بتحديث الصفحة.</li>
+                  <li>انسخ الكود الطويل المكتوب بجانب <strong>Server key</strong> (يبدأ عادةً بـ <code>AIza...</code>).</li>
+                </ul>
+            </ol>
+            
+            <div className="mt-3 text-xs text-blue-800 opacity-80">
+                ملاحظة: يدعم النظام أيضاً رموز الوصول الحديثة التي تبدأ بـ <code>ya29...</code> إذا كنت تستخدم OAuth 2.0 Playground.
+            </div>
           </div>
 
-          <p className="text-sm text-gray-500 mt-1 mb-2">
-            أدخل <strong>Legacy Server Key</strong> أو <strong>OAuth Access Token</strong>:
+          <p className="text-sm text-gray-600 font-medium mb-2">
+            الصق المفتاح هنا (Server Key / Access Token):
           </p>
           
           <div className="flex gap-3">
@@ -92,16 +110,16 @@ export const SettingsView: React.FC = () => {
               type="password" 
               value={serverKey}
               onChange={(e) => setServerKey(e.target.value)}
-              placeholder="AIza... (Legacy) OR ya29... (Token)"
+              placeholder="AIzaSy... OR ya29..."
               className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-left font-mono text-sm"
               dir="ltr"
             />
             <button 
               onClick={handleSaveKey}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2"
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2 shadow-sm"
             >
               <Save className="w-4 h-4" />
-              حفظ
+              حفظ المفتاح
             </button>
           </div>
         </div>
@@ -122,7 +140,7 @@ export const SettingsView: React.FC = () => {
             <button 
                 onClick={handleSyncSheet}
                 disabled={isSyncing}
-                className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition flex items-center gap-2 justify-center"
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition flex items-center gap-2 justify-center shadow-sm"
             >
                 <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                 {isSyncing ? 'جاري المزامنة...' : 'مزامنة من Google Sheet إلى Firebase'}
@@ -134,7 +152,7 @@ export const SettingsView: React.FC = () => {
                 className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition flex items-center gap-2 justify-center border border-gray-300"
             >
                 <Database className="w-4 h-4" />
-                بيانات تجريبية (Mock)
+                إضافة بيانات تجريبية
             </button>
           </div>
         </div>
@@ -149,19 +167,18 @@ export const SettingsView: React.FC = () => {
              </h3>
              <div className="text-sm text-green-800 space-y-4">
                 <p>
-                    تم إنشاء كود تطبيق الهاتف داخل المجلد <code>mobile_app/</code> في ملفات المشروع.
+                    يحتاج ولي الأمر لربط جهازه بالطالب لتلقي الإشعارات.
                 </p>
                 <div className="bg-white p-4 rounded border border-green-200">
                     <h4 className="font-bold flex items-center gap-2 mb-2">
                         <Code className="w-4 h-4" />
-                        تعليمات التشغيل:
+                        طريقة الربط (Login Panel):
                     </h4>
                     <ol className="list-decimal list-inside space-y-1 text-gray-700">
-                        <li>انسخ المجلد <code>mobile_app</code> إلى خارج المشروع.</li>
-                        <li>افتحه باستخدام VS Code أو Android Studio.</li>
-                        <li>نفذ الأمر: <code>flutter pub get</code></li>
-                        <li>أضف ملف <code>google-services.json</code> إلى مجلد <code>android/app/</code>.</li>
-                        <li>شغل التطبيق: <code>flutter run</code>.</li>
+                        <li>يقوم ولي الأمر بتحميل التطبيق وفتحه.</li>
+                        <li>يظهر له "لوحة دخول" (Login Panel) تطلب كود الطالب.</li>
+                        <li>يدخل "كود الطالب" (مثل <code>S1001</code>) ويضغط ربط.</li>
+                        <li>يقوم التطبيق بإرسال الـ Token الخاص بالجهاز إلى قاعدة البيانات وربطه بهذا الطالب.</li>
                     </ol>
                 </div>
              </div>

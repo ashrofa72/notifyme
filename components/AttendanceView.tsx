@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Student, ClassOption, AttendanceStatus, NotificationLog } from '../types';
 import { sendFCMNotification } from '../services/fcmService';
-import { Filter, Send, RotateCcw, Check, AlertCircle, Clock, Loader2, ArrowLeft } from 'lucide-react';
+import { Filter, Send, RotateCcw, Check, AlertCircle, Clock, Loader2, ArrowLeft, MinusSquare, CheckSquare, Square, X, Save, Smartphone } from 'lucide-react';
 
 interface AttendanceViewProps {
   students: Student[];
@@ -9,6 +9,7 @@ interface AttendanceViewProps {
   onNotificationsSent: (logs: NotificationLog[]) => void;
   onMarkNotificationSent: (studentCode: string) => void;
   onFetchClassData?: (grade: string, className: string) => Promise<void>;
+  onUpdateStudentToken: (studentCode: string, token: string) => Promise<void>;
   classes: ClassOption[];
 }
 
@@ -18,12 +19,19 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
   onNotificationsSent,
   onMarkNotificationSent,
   onFetchClassData,
+  onUpdateStudentToken,
   classes
 }) => {
   const [selectedGrade, setSelectedGrade] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [isSending, setIsSending] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
+  const [selectedCodes, setSelectedCodes] = useState<Set<string>>(new Set());
+
+  // Modal State
+  const [editingTokenStudent, setEditingTokenStudent] = useState<Student | null>(null);
+  const [newTokenValue, setNewTokenValue] = useState('');
+  const [isSavingToken, setIsSavingToken] = useState(false);
 
   // Trigger fetch when class 1-1 is selected (Auto-sync hook)
   useEffect(() => {
@@ -39,6 +47,11 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     };
     loadData();
   }, [selectedGrade, selectedClass, onFetchClassData]);
+
+  // Reset selection when class changes
+  useEffect(() => {
+    setSelectedCodes(new Set());
+  }, [selectedGrade, selectedClass]);
 
   // Dynamically calculate available classes based on Loaded Students + Mock Config
   const availableClasses = useMemo<ClassOption[]>(() => {
@@ -81,10 +94,14 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     );
   }, [students, selectedGrade, selectedClass]);
 
+  // Students eligible for notification (Absent/Late and not sent yet)
+  const eligibleStudents = useMemo(() => {
+    return filteredStudents.filter(s => s.status !== 'Present' && !s.notificationSent);
+  }, [filteredStudents]);
+
   // Detect if there are students available in OTHER classes when the current one is empty
   const alternativeClass = useMemo(() => {
     if (filteredStudents.length === 0 && students.length > 0) {
-        // Find the class with the most students to suggest
         const counts = new Map<string, number>();
         students.forEach(s => {
             const k = `${s.grade}|${s.className}`;
@@ -102,7 +119,6 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
 
         if (bestKey) {
             const [g, c] = bestKey.split('|');
-            // Only suggest if it's different from current
             if (g !== selectedGrade || c !== selectedClass) {
                 return { grade: g, className: c, count: maxCount };
             }
@@ -111,16 +127,65 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
     return null;
   }, [filteredStudents, students, selectedGrade, selectedClass]);
 
-  const pendingNotifications = filteredStudents.filter(
-    s => s.status !== 'Present' && !s.notificationSent
-  ).length;
+  // Selection Handlers
+  const handleSelectAll = () => {
+    if (selectedCodes.size === eligibleStudents.length && eligibleStudents.length > 0) {
+        setSelectedCodes(new Set()); // Deselect all
+    } else {
+        setSelectedCodes(new Set(eligibleStudents.map(s => s.studentCode)));
+    }
+  };
 
-  const handleBulkSend = async () => {
+  const toggleSelection = (code: string) => {
+    const newSet = new Set(selectedCodes);
+    if (newSet.has(code)) {
+        newSet.delete(code);
+    } else {
+        newSet.add(code);
+    }
+    setSelectedCodes(newSet);
+  };
+
+  // Wrapper for status update to handle auto-selection
+  const handleStatusChangeWithAutoSelect = (studentCode: string, status: AttendanceStatus) => {
+    onUpdateStudentStatus(studentCode, status);
+    
+    // UX Enhancement: If marking Absent/Late, auto-select them for sending.
+    // If marking Present, deselect them.
+    setSelectedCodes(prev => {
+        const newSet = new Set(prev);
+        if (status !== 'Present') {
+            newSet.add(studentCode);
+        } else {
+            newSet.delete(studentCode);
+        }
+        return newSet;
+    });
+
+    // Check if token is missing and trigger prompt if status is Absent or Late
+    if (status !== 'Present') {
+        const student = students.find(s => s.studentCode === studentCode);
+        if (student && (!student.fcmToken || student.fcmToken.length < 10)) {
+            setEditingTokenStudent(student);
+            setNewTokenValue('');
+        }
+    }
+  };
+
+  const handleSaveToken = async () => {
+    if (!editingTokenStudent || !newTokenValue.trim()) return;
+    setIsSavingToken(true);
+    await onUpdateStudentToken(editingTokenStudent.studentCode, newTokenValue.trim());
+    setIsSavingToken(false);
+    setEditingTokenStudent(null);
+  };
+
+  const handleSendSelected = async () => {
+    if (selectedCodes.size === 0) return;
+
     const studentsToNotify = filteredStudents.filter(
-      (s) => s.status !== 'Present' && !s.notificationSent
+      (s) => selectedCodes.has(s.studentCode)
     );
-
-    if (studentsToNotify.length === 0) return;
 
     setIsSending(true);
     const newLogs: NotificationLog[] = [];
@@ -130,14 +195,31 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
       newLogs.push(log);
       if (log.status === 'Sent') {
         onMarkNotificationSent(student.studentCode);
+        // Remove from selection after successful send
+        setSelectedCodes(prev => {
+            const next = new Set(prev);
+            next.delete(student.studentCode);
+            return next;
+        });
       }
     }
 
     onNotificationsSent(newLogs);
     setIsSending(false);
     
-    alert(`تم إرسال ${newLogs.filter(l => l.status === 'Sent').length} إشعار بنجاح.`);
+    // Better Reporting Alert
+    const sentCount = newLogs.filter(l => l.status === 'Sent').length;
+    const failedCount = newLogs.filter(l => l.status === 'Failed').length;
+
+    if (failedCount > 0) {
+        alert(`تم إرسال ${sentCount} إشعار بنجاح.\nفشل إرسال ${failedCount} إشعار.\n\nالسبب الأكثر شيوعاً للفشل:\nالطلاب المحددين لا يملكون رمز (Token) مسجل في قاعدة البيانات.\nيجب على ولي الأمر تحميل التطبيق وتسجيل الدخول بكود الطالب أولاً.`);
+    } else {
+        alert(`تم إرسال ${sentCount} إشعار بنجاح.`);
+    }
   };
+
+  const isAllSelected = eligibleStudents.length > 0 && selectedCodes.size === eligibleStudents.length;
+  const isIndeterminate = selectedCodes.size > 0 && selectedCodes.size < eligibleStudents.length;
 
   return (
     <div className="space-y-6">
@@ -201,10 +283,10 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                 )}
               </div>
               <button
-                onClick={handleBulkSend}
-                disabled={pendingNotifications === 0 || isSending}
+                onClick={handleSendSelected}
+                disabled={selectedCodes.size === 0 || isSending}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all shadow-sm
-                  ${pendingNotifications > 0 
+                  ${selectedCodes.size > 0 
                     ? 'bg-blue-600 text-white hover:bg-blue-700' 
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
@@ -214,7 +296,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                 ) : (
                   <Send className="w-4 h-4 rtl:rotate-180" />
                 )}
-                <span>إرسال {pendingNotifications > 0 ? `(${pendingNotifications})` : ''} إشعار</span>
+                <span>إرسال ({selectedCodes.size})</span>
               </button>
             </div>
 
@@ -223,6 +305,17 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
               <table className="w-full text-right border-collapse">
                 <thead>
                   <tr className="bg-white text-xs uppercase text-gray-500 font-semibold tracking-wider border-b border-gray-100">
+                    <th className="px-6 py-4 w-12 text-center">
+                        <button 
+                            onClick={handleSelectAll}
+                            disabled={eligibleStudents.length === 0}
+                            className="text-gray-500 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {isAllSelected ? <CheckSquare className="w-5 h-5 text-blue-600" /> : 
+                             isIndeterminate ? <MinusSquare className="w-5 h-5 text-blue-600" /> :
+                             <Square className="w-5 h-5" />}
+                        </button>
+                    </th>
                     <th className="px-6 py-4 text-right">رقم الطالب</th>
                     <th className="px-6 py-4 text-right">اسم الطالب</th>
                     <th className="px-6 py-4 text-right">معلومات الولي</th>
@@ -233,7 +326,7 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                 <tbody className="divide-y divide-gray-100">
                   {filteredStudents.length === 0 && !isFetchingData ? (
                       <tr>
-                          <td colSpan={5} className="px-6 py-12 text-center text-gray-400">
+                          <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
                              <div className="flex flex-col items-center gap-2">
                                 <span>لا يوجد طلاب في الصف {selectedGrade} - الفصل {selectedClass}.</span>
                                 
@@ -252,63 +345,135 @@ export const AttendanceView: React.FC<AttendanceViewProps> = ({
                              </div>
                           </td>
                       </tr>
-                  ) : filteredStudents.map((student) => (
-                    <tr key={student.studentCode} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 text-sm font-mono text-gray-500">
-                        {student.studentCode}
-                      </td>
-                      <td className="px-6 py-4 font-medium text-gray-900">
-                        {student.studentName}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <div>{student.parentName}</div>
-                        <div className="text-xs text-gray-400 text-left dir-ltr">{student.parentPhone}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-center space-x-1 rtl:space-x-reverse bg-gray-100 p-1 rounded-lg w-max mx-auto">
-                          <StatusButton 
-                            current={student.status} 
-                            target="Present" 
-                            icon={Check}
-                            label="حاضر"
-                            color="text-green-600 bg-green-50"
-                            onClick={() => onUpdateStudentStatus(student.studentCode, 'Present')} 
-                          />
-                          <StatusButton 
-                            current={student.status} 
-                            target="Late" 
-                            icon={Clock}
-                            label="متأخر"
-                            color="text-yellow-600 bg-yellow-50"
-                            onClick={() => onUpdateStudentStatus(student.studentCode, 'Late')} 
-                          />
-                          <StatusButton 
-                            current={student.status} 
-                            target="Absent" 
-                            icon={AlertCircle}
-                            label="غائب"
-                            color="text-red-600 bg-red-50"
-                            onClick={() => onUpdateStudentStatus(student.studentCode, 'Absent')} 
-                          />
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {student.notificationSent ? (
-                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">تم الإرسال</span>
-                        ) : student.status !== 'Present' ? (
-                           <span className="text-xs font-medium text-orange-500 bg-orange-50 px-2 py-1 rounded">قيد الانتظار</span>
-                        ) : (
-                          <span className="text-gray-300">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  ) : filteredStudents.map((student) => {
+                    const isSelectable = student.status !== 'Present' && !student.notificationSent;
+                    const isSelected = selectedCodes.has(student.studentCode);
+
+                    return (
+                        <tr key={student.studentCode} className={`transition-colors ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                        <td className="px-6 py-4 text-center">
+                            <button
+                                onClick={() => toggleSelection(student.studentCode)}
+                                disabled={!isSelectable}
+                                className={`transition-colors ${!isSelectable ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-600 cursor-pointer'}`}
+                            >
+                                {isSelected ? (
+                                    <CheckSquare className="w-5 h-5 text-blue-600" />
+                                ) : (
+                                    <Square className="w-5 h-5 text-gray-400" />
+                                )}
+                            </button>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-mono text-gray-500">
+                            {student.studentCode}
+                        </td>
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                            {student.studentName}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                            <div>{student.parentName}</div>
+                            <div className="text-xs text-gray-400 text-left dir-ltr">{student.parentPhone}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                            <div className="flex items-center justify-center space-x-1 rtl:space-x-reverse bg-gray-100 p-1 rounded-lg w-max mx-auto">
+                            <StatusButton 
+                                current={student.status} 
+                                target="Present" 
+                                icon={Check}
+                                label="حاضر"
+                                color="text-green-600 bg-green-50"
+                                onClick={() => handleStatusChangeWithAutoSelect(student.studentCode, 'Present')} 
+                            />
+                            <StatusButton 
+                                current={student.status} 
+                                target="Late" 
+                                icon={Clock}
+                                label="متأخر"
+                                color="text-yellow-600 bg-yellow-50"
+                                onClick={() => handleStatusChangeWithAutoSelect(student.studentCode, 'Late')} 
+                            />
+                            <StatusButton 
+                                current={student.status} 
+                                target="Absent" 
+                                icon={AlertCircle}
+                                label="غائب"
+                                color="text-red-600 bg-red-50"
+                                onClick={() => handleStatusChangeWithAutoSelect(student.studentCode, 'Absent')} 
+                            />
+                            </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                            {student.notificationSent ? (
+                            <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">تم الإرسال</span>
+                            ) : student.status !== 'Present' ? (
+                            <span className="text-xs font-medium text-orange-500 bg-orange-50 px-2 py-1 rounded">قيد الانتظار</span>
+                            ) : (
+                            <span className="text-gray-300">-</span>
+                            )}
+                        </td>
+                        </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </>
         )}
       </div>
+
+      {/* Manual Token Entry Modal */}
+      {editingTokenStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+                <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-orange-100 p-2 rounded-full">
+                            <Smartphone className="w-6 h-6 text-orange-600" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">إضافة رمز جهاز (Token)</h3>
+                            <p className="text-sm text-gray-500">للطالب: {editingTokenStudent.studentName}</p>
+                        </div>
+                    </div>
+                    <button onClick={() => setEditingTokenStudent(null)} className="text-gray-400 hover:text-gray-600">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+                
+                <div className="mb-4">
+                    <p className="text-sm text-gray-600 mb-3 leading-relaxed">
+                        هذا الطالب لا يملك رمز جهاز مسجل. بدون هذا الرمز، لن يتم إرسال الإشعار.
+                        يمكنك إدخال الرمز يدوياً إذا توفر لديك، أو تخطي هذه الخطوة.
+                    </p>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">FCM Token</label>
+                    <textarea 
+                        value={newTokenValue}
+                        onChange={(e) => setNewTokenValue(e.target.value)}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-xs font-mono h-24 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                        placeholder="أدخل الرمز هنا..."
+                        dir="ltr"
+                    />
+                </div>
+
+                <div className="flex justify-end gap-3">
+                    <button 
+                        onClick={() => setEditingTokenStudent(null)}
+                        className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+                    >
+                        تخطي
+                    </button>
+                    <button 
+                        onClick={handleSaveToken}
+                        disabled={!newTokenValue.trim() || isSavingToken}
+                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isSavingToken ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        حفظ ومتابعة
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -7,7 +7,7 @@ import { SettingsView } from './components/SettingsView';
 import { AuthPage } from './components/AuthPage';
 import { ViewState, Student, NotificationLog, AttendanceStatus } from './types';
 import { MOCK_CLASSES, INITIAL_LOGS } from './services/mockData';
-import { getStudents, fetchStudentsFromGoogleSheet } from './services/dataService';
+import { getStudents, fetchStudentsFromGoogleSheet, updateStudentToken } from './services/dataService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
@@ -104,6 +104,18 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const handleUpdateStudentToken = useCallback(async (studentCode: string, token: string) => {
+    try {
+        await updateStudentToken(studentCode, token);
+        setStudents(prev => prev.map(s => 
+            s.studentCode === studentCode ? { ...s, fcmToken: token } : s
+        ));
+    } catch (error) {
+        console.error("Failed to save token", error);
+        alert("فشل حفظ الرمز في قاعدة البيانات.");
+    }
+  }, []);
+
   const renderContent = () => {
     if (isDataLoading && currentView !== ViewState.SETTINGS) {
        return <div className="flex h-full items-center justify-center text-gray-400">جاري تحميل البيانات...</div>;
@@ -121,6 +133,7 @@ const App: React.FC = () => {
             onNotificationsSent={handleNotificationsSent}
             onMarkNotificationSent={handleMarkNotificationSent}
             onFetchClassData={handleFetchClassData}
+            onUpdateStudentToken={handleUpdateStudentToken}
           />
         );
       case ViewState.HISTORY:

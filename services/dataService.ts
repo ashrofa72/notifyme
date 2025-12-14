@@ -41,6 +41,18 @@ export const seedDatabase = async (): Promise<void> => {
   }
 };
 
+export const updateStudentToken = async (studentCode: string, token: string): Promise<void> => {
+  try {
+    const docRef = doc(db, STUDENTS_COLLECTION, studentCode);
+    // Use setDoc with merge: true to update the token without overwriting other fields
+    // or create the doc if it doesn't exist (though it should exist)
+    await setDoc(docRef, { fcmToken: token }, { merge: true });
+  } catch (error) {
+    console.error("Error updating student token:", error);
+    throw error;
+  }
+};
+
 // New Function: Reads Google Sheet and updates Firestore
 // It PRESERVES existing Tokens if a parent has already registered.
 export const syncSheetToFirestore = async (): Promise<string> => {
