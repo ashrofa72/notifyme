@@ -7,7 +7,7 @@ import { SettingsView } from './components/SettingsView';
 import { AuthPage } from './components/AuthPage';
 import { ViewState, Student, NotificationLog, AttendanceStatus } from './types';
 import { MOCK_CLASSES, INITIAL_LOGS } from './services/mockData';
-import { getStudents, fetchStudentsFromGoogleSheet, updateStudentToken } from './services/dataService';
+import { subscribeToStudents, fetchStudentsFromGoogleSheet, updateStudentToken, syncSheetToFirestore } from './services/dataService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { Loader2 } from 'lucide-react';
@@ -33,22 +33,29 @@ const App: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  // Load Data only when user is logged in
+  // Real-time Data Subscription
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+        setStudents([]);
+        return;
+    }
 
-    const fetchData = async () => {
-      setIsDataLoading(true);
-      const data = await getStudents();
-      if (data.length > 0) {
-        setStudents(data);
-      } else {
-        setStudents([]); 
-      }
-      setIsDataLoading(false);
-    };
+    setIsDataLoading(true);
+    
+    // Subscribe to Firestore updates
+    // This ensures that if a token is added in DB, the app reflects it immediately without refresh
+    const unsubscribe = subscribeToStudents(
+        (updatedStudents) => {
+            setStudents(updatedStudents);
+            setIsDataLoading(false);
+        },
+        (error) => {
+            console.error("Failed to subscribe to students:", error);
+            setIsDataLoading(false);
+        }
+    );
 
-    fetchData();
+    return () => unsubscribe();
   }, [user]); 
 
   // Handlers
@@ -83,23 +90,18 @@ const App: React.FC = () => {
     );
   }, []);
 
+  // Modified: Instead of setting local state directly (which might overwrite DB tokens),
+  // we now trigger a sync to DB. The subscription will then update the UI.
   const handleFetchClassData = useCallback(async (grade: string, className: string) => {
-    // Logic: If user selects Grade 1 - Class 1, we try to fetch from Google Sheet
+    // Logic: If user selects Grade 1 - Class 1, trigger a sync to ensure we have data
     if (grade === '1' && className === '1') {
        try {
-         const sheetStudents = await fetchStudentsFromGoogleSheet();
-         
-         if (sheetStudents.length > 0) {
-            setStudents(prev => {
-                // Remove existing students for this specific class to avoid duplicates
-                const otherStudents = prev.filter(s => !(s.grade === grade && s.className === className));
-                // Add the fresh data
-                return [...otherStudents, ...sheetStudents];
-            });
-         }
+         // This syncs sheet to DB. DB update triggers 'subscribeToStudents', updating the UI.
+         await syncSheetToFirestore();
        } catch (e) {
-         console.warn("Failed to fetch Google Sheet data. Ensure sheet is published to web.");
-         alert("تعذر تحميل البيانات من Google Sheet. يرجى التأكد من نشر الورقة (File -> Share -> Publish to web).");
+         console.warn("Auto-sync failed:", e);
+         // Fallback: If sync fails (e.g. invalid sheet), we don't block the UI, 
+         // but we also don't overwrite local state with potentially empty token data manually.
        }
     }
   }, []);
@@ -107,9 +109,8 @@ const App: React.FC = () => {
   const handleUpdateStudentToken = useCallback(async (studentCode: string, token: string) => {
     try {
         await updateStudentToken(studentCode, token);
-        setStudents(prev => prev.map(s => 
-            s.studentCode === studentCode ? { ...s, fcmToken: token } : s
-        ));
+        // No need to manually update local state 'setStudents' here because 
+        // updateStudentToken writes to DB, and the onSnapshot listener will update 'students' automatically.
     } catch (error) {
         console.error("Failed to save token", error);
         alert("فشل حفظ الرمز في قاعدة البيانات.");
@@ -117,7 +118,7 @@ const App: React.FC = () => {
   }, []);
 
   const renderContent = () => {
-    if (isDataLoading && currentView !== ViewState.SETTINGS) {
+    if (isDataLoading && students.length === 0 && currentView !== ViewState.SETTINGS) {
        return <div className="flex h-full items-center justify-center text-gray-400">جاري تحميل البيانات...</div>;
     }
 
@@ -127,7 +128,7 @@ const App: React.FC = () => {
       case ViewState.ATTENDANCE:
         return (
           <AttendanceView
-            students={students.length > 0 ? students : []} 
+            students={students} 
             classes={MOCK_CLASSES}
             onUpdateStudentStatus={handleUpdateStudentStatus}
             onNotificationsSent={handleNotificationsSent}

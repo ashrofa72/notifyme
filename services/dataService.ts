@@ -1,12 +1,43 @@
 import { db } from './firebase';
-import { collection, getDocs, doc, writeBatch, getDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, writeBatch, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { Student } from '../types';
 import { MOCK_STUDENTS } from './mockData';
 
 const STUDENTS_COLLECTION = 'students';
 
-// Fetch students primarily from Firestore. 
-// This is the Source of Truth because it contains the FCM Tokens written by the Parent App.
+// Helper to safely map Firestore document to Student type
+const mapDocToStudent = (docSnapshot: any): Student => {
+  const data = docSnapshot.data();
+  return {
+    studentCode: data.studentCode || docSnapshot.id,
+    studentName: data.studentName || 'Unknown',
+    grade: data.grade || '1',
+    className: data.className || '1',
+    parentName: data.parentName || '',
+    parentPhone: data.parentPhone || '',
+    // Robust check for token field (handle legacy 'token' or 'fcmToken')
+    fcmToken: data.fcmToken || data.token || '', 
+    status: data.status || 'Present',
+    notificationSent: data.notificationSent || false
+  };
+};
+
+// Real-time subscription to students collection
+export const subscribeToStudents = (onUpdate: (students: Student[]) => void, onError?: (error: any) => void) => {
+  const studentsCol = collection(db, STUDENTS_COLLECTION);
+  
+  const unsubscribe = onSnapshot(studentsCol, (snapshot) => {
+    const students = snapshot.docs.map(mapDocToStudent);
+    onUpdate(students);
+  }, (error) => {
+    console.error("Firestore subscription error:", error);
+    if (onError) onError(error);
+  });
+
+  return unsubscribe;
+};
+
+// Fallback fetch (kept for reference or specific use cases)
 export const getStudents = async (): Promise<Student[]> => {
   try {
     const studentsCol = collection(db, STUDENTS_COLLECTION);
@@ -17,7 +48,7 @@ export const getStudents = async (): Promise<Student[]> => {
       return [];
     }
     
-    return querySnapshot.docs.map(doc => doc.data() as Student);
+    return querySnapshot.docs.map(mapDocToStudent);
   } catch (error: any) {
     console.warn("Firestore access failed. Falling back to MOCK data.", error);
     return MOCK_STUDENTS;
@@ -45,7 +76,7 @@ export const updateStudentToken = async (studentCode: string, token: string): Pr
   try {
     const docRef = doc(db, STUDENTS_COLLECTION, studentCode);
     // Use setDoc with merge: true to update the token without overwriting other fields
-    // or create the doc if it doesn't exist (though it should exist)
+    // Ensure we write to 'fcmToken' standard field
     await setDoc(docRef, { fcmToken: token }, { merge: true });
   } catch (error) {
     console.error("Error updating student token:", error);
@@ -70,11 +101,11 @@ export const syncSheetToFirestore = async (): Promise<string> => {
             const studentSnap = await getDoc(studentRef);
 
             if (studentSnap.exists()) {
-                const existingData = studentSnap.data() as Student;
+                const existingData = studentSnap.data();
                 // MERGE STRATEGY: Update name/class/phone, but KEEP the fcmToken if the parent has logged in via Mobile App
                 const mergedData = {
                     ...sheetStudent,
-                    fcmToken: existingData.fcmToken || sheetStudent.fcmToken || '', // Prefer existing token
+                    fcmToken: existingData.fcmToken || existingData.token || sheetStudent.fcmToken || '', // Prefer existing token
                     status: existingData.status || 'Present' // Preserve attendance status if set today
                 };
                 batch.set(studentRef, mergedData);
