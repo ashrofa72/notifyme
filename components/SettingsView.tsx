@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Database, Key, HelpCircle, Smartphone, Code, RefreshCw, ExternalLink, Link as LinkIcon, Loader2 } from 'lucide-react';
-import { getStoredServerKey, setStoredServerKey, requestBrowserToken } from '../services/fcmService';
+import { Save, Database, Key, HelpCircle, Smartphone, Code, RefreshCw, ExternalLink, Link as LinkIcon, Loader2, Globe } from 'lucide-react';
+import { getStoredServerKey, setStoredServerKey, getStoredVapidKey, setStoredVapidKey, requestBrowserToken } from '../services/fcmService';
 import { seedDatabase, syncSheetToFirestore, updateStudentToken } from '../services/dataService';
 
 export const SettingsView: React.FC = () => {
   const [serverKey, setServerKey] = useState('');
+  const [vapidKey, setVapidKey] = useState('');
+  
   const [isSeeding, setIsSeeding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   
@@ -17,11 +19,13 @@ export const SettingsView: React.FC = () => {
 
   useEffect(() => {
     setServerKey(getStoredServerKey());
+    setVapidKey(getStoredVapidKey());
   }, []);
 
-  const handleSaveKey = () => {
+  const handleSaveKeys = () => {
     setStoredServerKey(serverKey);
-    alert('تم حفظ المفتاح بنجاح!');
+    setStoredVapidKey(vapidKey);
+    alert('تم حفظ المفاتيح بنجاح!');
   };
 
   const handleSeed = async () => {
@@ -66,12 +70,11 @@ export const SettingsView: React.FC = () => {
             await updateStudentToken(simStudentCode.trim(), token);
             alert(`تم ربط هذا المتصفح بنجاح بالطالب: ${simStudentCode}`);
             setSimStudentCode('');
-        } else {
-            alert("فشل الحصول على الرمز. تأكد من منح إذن الإشعارات للمتصفح.");
         }
+        // Error alerts are handled inside requestBrowserToken
     } catch (e) {
         console.error(e);
-        alert("حدث خطأ أثناء الربط.");
+        // Error alerts are handled inside requestBrowserToken
     } finally {
         setIsLinking(false);
     }
@@ -89,66 +92,80 @@ export const SettingsView: React.FC = () => {
         <div>
           <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
             <Key className="w-5 h-5 text-blue-600" />
-            1. مفتاح الإشعارات (Notification Key)
+            1. مفاتيح الإشعارات (Firebase Keys)
           </h3>
           
           <div className="mt-4 mb-6 bg-blue-50 border border-blue-100 rounded-lg p-5">
             <h4 className="font-bold text-blue-800 flex items-center gap-2 mb-3">
                 <HelpCircle className="w-5 h-5" />
-                طريقة الحصول على المفتاح
+                كيفية الإعداد
             </h4>
             
             <p className="text-sm text-blue-900 mb-2">
-              لديك خياران: استخدام المفتاح القديم (Legacy) أو رمز OAuth 2.0 (ya29).
+               لإرسال واستقبال الإشعارات بشكل صحيح، تحتاج إلى مفتاحين من Firebase Console.
             </p>
-
-            <ol className="list-decimal list-inside text-sm text-blue-900 space-y-3 bg-white p-3 rounded border border-blue-100">
-                <li className="font-semibold">الخيار الأسهل (Legacy Key):</li>
-                <ul className="list-disc list-inside mr-5 space-y-1 text-gray-700">
-                  <li>
-                      افتح وحدة تحكم Firebase وانتقل إلى 
-                      <a 
-                        href={`https://console.firebase.google.com/project/${PROJECT_ID}/settings/cloudmessaging`} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 mx-1 font-bold underline text-blue-700 hover:text-blue-900"
-                      >
-                          Project Settings &gt; Cloud Messaging
-                          <ExternalLink className="w-3 h-3" />
-                      </a>.
-                  </li>
-                  <li>ابحث عن القسم المسمى <strong>Cloud Messaging API (Legacy)</strong> في أعلى الصفحة.</li>
-                  <li>إذا كانت الحالة <strong>Disabled</strong> (معطل)، اضغط على القائمة (ثلاث نقاط) ثم اختر <em>"Manage API in Google Cloud Console"</em> واضغط <strong>Enable</strong>.</li>
-                  <li>بعد التفعيل، عد إلى صفحة إعدادات Firebase وقم بتحديث الصفحة.</li>
-                  <li>انسخ الكود الطويل المكتوب بجانب <strong>Server key</strong> (يبدأ عادةً بـ <code>AIza...</code>).</li>
-                </ul>
-            </ol>
-            
-            <div className="mt-3 text-xs text-blue-800 opacity-80">
-                ملاحظة: يدعم النظام أيضاً رموز الوصول الحديثة التي تبدأ بـ <code>ya29...</code> إذا كنت تستخدم OAuth 2.0 Playground.
+            <div className="text-sm text-blue-800 space-y-2">
+                <p>
+                    <Globe className="inline w-3 h-3 ml-1" />
+                    <strong>1. Web Push Certificate (للمتصفح):</strong> اذهب إلى Project Settings &gt; Cloud Messaging &gt; Web configuration. اضغط "Generate key pair". انسخ الـ Key pair.
+                </p>
+                <p>
+                    <Key className="inline w-3 h-3 ml-1" />
+                    <strong>2. Server Key (للإرسال):</strong> من نفس الصفحة، قسم Cloud Messaging API (Legacy). انسخ الـ Server key.
+                </p>
             </div>
+            <a 
+                href={`https://console.firebase.google.com/project/${PROJECT_ID}/settings/cloudmessaging`} 
+                target="_blank" 
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 mt-3 text-sm font-bold underline text-blue-700 hover:text-blue-900"
+            >
+                الذهاب إلى Firebase Console
+                <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
 
-          <p className="text-sm text-gray-600 font-medium mb-2">
-            الصق المفتاح هنا (Server Key / Access Token):
-          </p>
-          
-          <div className="flex gap-3">
-            <input 
-              type="password" 
-              value={serverKey}
-              onChange={(e) => setServerKey(e.target.value)}
-              placeholder="AIzaSy... OR ya29..."
-              className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-left font-mono text-sm"
-              dir="ltr"
-            />
-            <button 
-              onClick={handleSaveKey}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2 shadow-sm"
-            >
-              <Save className="w-4 h-4" />
-              حفظ المفتاح
-            </button>
+          <div className="grid gap-4">
+            {/* Server Key Input */}
+            <div>
+                <label className="block text-sm text-gray-600 font-medium mb-1">
+                    مفتاح الخادم للإرسال (Server Key / Legacy Key):
+                </label>
+                <input 
+                  type="password" 
+                  value={serverKey}
+                  onChange={(e) => setServerKey(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-left font-mono text-sm"
+                  dir="ltr"
+                />
+            </div>
+
+            {/* VAPID Key Input */}
+            <div>
+                <label className="block text-sm text-gray-600 font-medium mb-1">
+                    مفتاح شهادة الويب (Web Push Certificate / VAPID Key):
+                </label>
+                <input 
+                  type="text" 
+                  value={vapidKey}
+                  onChange={(e) => setVapidKey(e.target.value)}
+                  placeholder="B..."
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-left font-mono text-sm"
+                  dir="ltr"
+                />
+                <p className="text-xs text-gray-400 mt-1">ضروري لإصلاح خطأ "applicationServerKey is not valid"</p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+                <button 
+                  onClick={handleSaveKeys}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2 shadow-sm"
+                >
+                  <Save className="w-4 h-4" />
+                  حفظ المفاتيح
+                </button>
+            </div>
           </div>
         </div>
 

@@ -2,70 +2,84 @@ import { Student, NotificationLog } from '../types';
 import { messaging } from './firebase';
 import { getToken } from 'firebase/messaging';
 
+// Storage helpers for Server Key (Legacy/OAuth) and VAPID Key (Web Push)
 export const getStoredServerKey = () => localStorage.getItem('FCM_SERVER_KEY') || '';
 export const setStoredServerKey = (key: string) => localStorage.setItem('FCM_SERVER_KEY', key);
+
+export const getStoredVapidKey = () => localStorage.getItem('FCM_VAPID_KEY') || '';
+export const setStoredVapidKey = (key: string) => localStorage.setItem('FCM_VAPID_KEY', key);
 
 // The Project ID from your Service Account JSON
 const PROJECT_ID = 'notify-me-efcdf';
 
 // New function to generate token for current browser (Parent Simulator)
 export const requestBrowserToken = async (): Promise<string | null> => {
+  // 1. Check Browser Support
   if (!('Notification' in window)) {
     alert("هذا المتصفح لا يدعم الإشعارات.");
     return null;
   }
 
   try {
+    // 2. Request Permission
     const permission = await Notification.requestPermission();
-    if (permission === 'granted') {
-      
-      // 1. Explicitly Register Service Worker to ensure it exists
-      let swRegistration;
-      try {
-        // We register the file we created in public/firebase-messaging-sw.js
-        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-        console.log('Service Worker Registered successfully:', swRegistration);
-      } catch (swError) {
-        console.warn('Service Worker registration failed or already active. Proceeding...', swError);
-      }
-
-      // 2. Get Token with VAPID Key and SW Registration
-      // Note: In a real production app, ensure your VAPID key matches your Firebase Console -> Cloud Messaging -> Web Push Certificates
-      try {
-        const token = await getToken(messaging, {
-          vapidKey: "BLmZk85aE-Cq9yYj5E_w49bF6E8dF7cHG-I1j2K3L4M5N6O7P8Q9R0S1T2U3V4W5X6Y7Z8",
-          serviceWorkerRegistration: swRegistration
-        });
-        
-        console.log("Generated Token:", token);
-        return token;
-      } catch (tokenError: any) {
-         console.warn("GetToken with VAPID failed, trying fallback...", tokenError);
-         
-         // 3. Fallback: Try without VAPID (sometimes works depending on project config)
-         try {
-            return await getToken(messaging, { serviceWorkerRegistration: swRegistration });
-         } catch (fallbackError: any) {
-             console.error("FCM Token Error:", fallbackError);
-             
-             if (fallbackError.code === 'messaging/unsupported-browser' || fallbackError.message?.includes('secure context')) {
-                 alert("خطأ: يتطلب Firebase Messaging سياقاً آمناً (HTTPS) أو Localhost.");
-             } else if (fallbackError.code === 'messaging/failed-service-worker-registration') {
-                 alert("خطأ: لم يتم العثور على ملف firebase-messaging-sw.js في المجلد العام.");
-             } else {
-                 alert(`فشل توليد الرمز: ${fallbackError.message}`);
-             }
-             return null;
-         }
-      }
-    } else {
-      console.warn('Notification permission denied.');
+    if (permission !== 'granted') {
       alert("تم رفض إذن الإشعارات. يرجى تفعيله من إعدادات المتصفح.");
       return null;
     }
-  } catch (error) {
-    console.error('Error getting browser token:', error);
-    throw error;
+
+    // 3. Register Service Worker Explicitly
+    let swRegistration;
+    try {
+      swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      console.log('SW Registered:', swRegistration);
+    } catch (swError: any) {
+      console.error('Service Worker registration failed:', swError);
+      alert("فشل تسجيل Service Worker: " + swError.message);
+      return null;
+    }
+
+    // 4. Get Token using VAPID Key if available
+    const vapidKey = getStoredVapidKey();
+    
+    try {
+      // Build options object
+      const options: any = {
+        serviceWorkerRegistration: swRegistration
+      };
+      
+      // Only add vapidKey if it exists and looks valid (not empty)
+      if (vapidKey && vapidKey.length > 10) {
+        options.vapidKey = vapidKey;
+      }
+
+      const token = await getToken(messaging, options);
+      
+      console.log("Generated Token:", token);
+      return token;
+
+    } catch (tokenError: any) {
+       console.error("FCM Token Error:", tokenError);
+       
+       // Handle specific "applicationServerKey not valid" error
+       if (tokenError.message && (
+           tokenError.message.includes('applicationServerKey is not valid') || 
+           tokenError.message.includes('missing-multipart-messaging-sender-id')
+       )) {
+           alert("خطأ: مفتاح Web Push Certificate غير صالح أو مفقود.\n\nالحل: اذهب إلى صفحة 'الإعدادات' في هذا التطبيق وأدخل 'Web Push Certificate Key pair' الذي يمكنك الحصول عليه من Firebase Console.");
+       } else if (tokenError.code === 'messaging/permission-blocked') {
+           alert("الإشعارات محظورة. يرجى إعادة تعيين الأذونات للموقع.");
+       } else if (tokenError.code === 'messaging/unsupported-browser') {
+           alert("خطأ: يجب استخدام HTTPS أو Localhost لتشغيل الإشعارات.");
+       } else {
+           alert(`فشل توليد الرمز: ${tokenError.message}`);
+       }
+       return null;
+    }
+  } catch (error: any) {
+    console.error('Unexpected error getting browser token:', error);
+    alert("حدث خطأ غير متوقع: " + error.message);
+    return null;
   }
 };
 
@@ -78,7 +92,11 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     ? `تنبيه: ابنكم ${student.studentName} غائب اليوم.` 
     : `تنبيه: وصل ابنكم ${student.studentName} متأخراً اليوم.`;
 
-  const notificationId = crypto.randomUUID();
+  // Use a fallback for UUID if crypto is not available (older browsers/contexts)
+  const notificationId = typeof crypto !== 'undefined' && crypto.randomUUID 
+    ? crypto.randomUUID() 
+    : `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
   const timestamp = new Date().toLocaleString('ar-EG');
 
   // 1. Validation: Check if Token exists
@@ -111,8 +129,6 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
   }
 
   // 3. Determine API Version based on Key format
-  // Legacy Keys usually start with AIza...
-  // OAuth Tokens (v1) usually start with ya29...
   const isV1Token = keyOrToken.startsWith('ya29');
 
   try {
@@ -120,7 +136,6 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
     
     if (isV1Token) {
       // --- HTTP v1 API (Modern) ---
-      // Requires: OAuth 2.0 Access Token
       const v1Payload = {
         message: {
           token: student.fcmToken,
@@ -147,7 +162,6 @@ export const sendFCMNotification = async (student: Student): Promise<Notificatio
 
     } else {
       // --- Legacy HTTP API (Old) ---
-      // Requires: Server Key (starts with AIza)
       const legacyPayload = {
         to: student.fcmToken,
         notification: {
